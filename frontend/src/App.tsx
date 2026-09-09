@@ -449,7 +449,7 @@ function CaptureView({
                     min={0}
                     step={5}
                     value={it.portion_g}
-                    onChange={(e) => updatePortion(i, Number(e.target.value))}
+                    onChange={(e) => updatePortion(i, Number(e.target.value) || 0)}
                   />
                   <span>g</span>
                 </div>

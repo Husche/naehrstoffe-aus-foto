@@ -31,6 +31,7 @@ export interface FoodItem {
   vitamin_k_ug: number;
   folate_ug: number;
   cholesterol_mg: number;
+  trans_fat_g: number;
   per100?: Record<string, number> & { source?: string };
 }
 
@@ -78,6 +79,7 @@ export const MACRO_LABELS: Record<string, string> = {
   folate_ug: "Folat (µg)",
   cholesterol_mg: "Cholesterin (mg)",
   sat_fat_g: "ges. Fett (g)",
+  trans_fat_g: "trans-Fett (g)",
 };
 
 export const MACRO_KEYS = [
@@ -111,6 +113,7 @@ export const MICRO_KEYS = [
   "folate_ug",
   "cholesterol_mg",
   "sat_fat_g",
+  "trans_fat_g",
 ] as const;
 
 export function emptyFoodItem(name = ""): FoodItem {
@@ -147,6 +150,7 @@ export function emptyFoodItem(name = ""): FoodItem {
     vitamin_k_ug: 0,
     folate_ug: 0,
     cholesterol_mg: 0,
+    trans_fat_g: 0,
     per100: {},
   };
 }
@@ -179,12 +183,14 @@ export const NUTRIENT_NUMERIC_KEYS = [
   "vitamin_k_ug",
   "folate_ug",
   "cholesterol_mg",
+  "trans_fat_g",
 ] as const;
 
 export function rescaleItem(item: FoodItem): FoodItem {
   const p = item.per100;
-  if (!p) return item;
-  const factor = item.portion_g / 100;
+  if (!p || Object.keys(p).length === 0) return item;
+  const grams = Number.isFinite(item.portion_g) && item.portion_g >= 0 ? item.portion_g : 0;
+  const factor = grams / 100;
   const copy: FoodItem = { ...item };
   for (const k of NUTRIENT_NUMERIC_KEYS) {
     const base = Number(p[k as string] ?? 0);

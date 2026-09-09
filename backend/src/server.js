@@ -18,7 +18,7 @@ app.use(cors({ origin: config.corsOrigin }));
 app.use(express.json({ limit: "25mb" }));
 
 const upload = multer({
-  storage: multer.memoryStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 },
 });
 app.use("/assets", express.static("../frontend/dist/assets"));
@@ -139,13 +139,10 @@ app.post("/api/drive/upload", async (req, res) => {
   }
 });
 
-// --- SPA Fallback ---
-app.get("*", (req, res, next) => {
-  if (req.path.startsWith("/api") || req.path.startsWith("/oauth")) {
-    return next();
-  }
+// --- SPA Fallback (nur für nicht-API-Routen) ---
+app.get("*", (req, res) => {
   res.sendFile("index.html", { root: "../frontend/dist" }, (err) => {
-    if (err) next();
+    if (err) res.status(404).send("Frontend nicht gebaut. Führe 'npm run build' aus.");
   });
 });
 

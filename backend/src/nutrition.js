@@ -3,8 +3,7 @@ import { config } from "./config.js";
 // Nährstoffe, die wir aus Open Food Facts extrahieren (pro 100 g / 100 ml).
 // Schlüssel = OFF-Feldname, Wert = interner Spaltenname im CSV.
 export const NUTRIENT_MAP = {
-  energy_kcal: "kcal",
-  "energy-kcal": "kcal_alt",
+  "energy-kcal": "kcal",
   proteins: "protein_g",
   fat: "fat_g",
   carbohydrates: "carbs_g",
@@ -31,7 +30,7 @@ export const NUTRIENT_MAP = {
   folate: "folate_ug",
   cholesterol: "cholesterol_mg",
   "saturated-fat": "sat_fat_g",
-  trans_fat: "trans_fat_g",
+  "trans-fat": "trans_fat_g",
 };
 
 export const NUTRIENT_COLUMNS = [
@@ -39,6 +38,7 @@ export const NUTRIENT_COLUMNS = [
   "protein_g",
   "fat_g",
   "sat_fat_g",
+  "trans_fat_g",
   "carbs_g",
   "sugar_g",
   "fiber_g",
@@ -123,9 +123,9 @@ function extractNutrients(product) {
       base[ourKey] = Number(val);
     }
   }
-  // Vereinheitliche kcal-Feld: OFF nutzt teils "energy-kcal_100g" (in kcal) oder "energy-kj_100g".
-  if ((!base.kcal || base.kcal === 0) && n["energy-kcal_100g"]) {
-    base.kcal = Number(n["energy-kcal_100g"]);
+  // Fallback: kcal aus kJ ableiten (1 kcal = 4.184 kJ), falls nur Joule geliefert.
+  if ((!base.kcal || base.kcal === 0) && (n["energy-kj_100g"] || n.energy_kj_100g)) {
+ base.kcal = Math.round((Number(n["energy-kj_100g"] ?? n.energy_kj_100g)) / 4.184);
   }
   base.source = product.product_name || product.code || "openfoodfacts";
   return base;

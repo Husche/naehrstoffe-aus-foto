@@ -40,10 +40,9 @@ export async function exchangeCode(code) {
 export async function refreshIfNeeded() {
   const t = config.drive.tokens;
   if (!t) throw new Error("Google Drive nicht verbunden. Bitte erst OAuth durchführen.");
-  const expired = t.expires_at && Date.now() >= t.expires_at - 60000;
-  if (!t.refresh_token || !expired) {
-    if (!expired) return t.access_token;
-  }
+  const expired = !t.expires_at || Date.now() >= t.expires_at - 60000;
+  if (!expired) return t.access_token;
+  if (!t.refresh_token) throw new Error("Refresh-Token fehlt. Bitte OAuth erneut durchführen.");
   const res = await fetch(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
