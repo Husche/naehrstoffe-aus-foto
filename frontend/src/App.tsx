@@ -71,14 +71,30 @@ export default function App() {
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [webauthnOk, setWebauthnOk] = useState(false);
   const [faceId, setFaceId] = useState(false);
+  const [online, setOnline] = useState(navigator.onLine);
 
   useEffect(() => {
-    getHealth().then((h) => setHealth({ mistral: h.mistral, drive: h.drive })).catch(() => {});
+    getHealth().then((h) => setHealth({ mistral: h.mistral, drive: h.drive })).catch(() => setHealth({ mistral: false, drive: false }));
     getDriveStatus().then(setDriveConnected).catch(() => {});
     refreshMeals();
     webauthnSupported() && setWebauthnOk(true);
     faceIdAvailable().then(setFaceId).catch(() => setFaceId(false));
     if (!isRegistered()) setLoggedIn(true);
+  }, []);
+
+  // Online/Offline-Status verfolgen.
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
+  }, []);
+
+  // Drive-Status periodisch prüfen (alle 30s), damit OAuth-Verbindung erkannt wird.
+  useEffect(() => {
+    const t = setInterval(() => getDriveStatus().then(setDriveConnected).catch(() => {}), 30000);
+    return () => clearInterval(t);
   }, []);
 
   useEffect(() => {
@@ -172,27 +188,41 @@ export default function App() {
       setError("Keine Lebensmittel. Füge mindestens eines hinzu.");
       return;
     }
-    await saveMeal(draft);
-    setSyncMsg("Mahlzeit lokal gespeichert." + (navigator.onLine ? "" : " Wird synchronisiert, wenn online."));
-    setDraft(null);
-    setPreview(null);
-    refreshMeals();
+    try {
+      await saveMeal(draft);
+      setSyncMsg("Mahlzeit lokal gespeichert." + (navigator.onLine ? "" : " Wird synchronisiert, wenn online."));
+      setDraft(null);
+      setPreview(null);
+      refreshMeals();
+    } catch (e: any) {
+      setError(e.message || "Speichern fehlgeschlagen.");
+    }
   }
 
   async function handleDownloadCsv(meal: Meal) {
-    const blob = await downloadCsv(meal);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `naehrstoffe_${meal.meal_id}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    setError(null);
+    try {
+      const blob = await downloadCsv(meal);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `naehrstoffe_${meal.meal_id}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setError(e.message || "CSV-Download fehlgeschlagen.");
+    }
   }
 
   async function connectDrive() {
-    const url = await getDriveAuthUrl();
-    window.open(url, "_blank");
-    setTimeout(() => getDriveStatus().then(setDriveConnected), 3000);
+    setError(null);
+    try {
+      const url = await getDriveAuthUrl();
+      window.open(url, "_blank");
+      setTimeout(() => getDriveStatus().then(setDriveConnected), 3000);
+    } catch (e: any) {
+      setError(e.message || "Google Drive konnte nicht verbunden werden.");
+    }
   }
 
   async function trySync() {
@@ -228,8 +258,12 @@ export default function App() {
   }
 
   async function removeMeal(id: string) {
-    await deleteMeal(id);
-    refreshMeals();
+    try {
+      await deleteMeal(id);
+      refreshMeals();
+    } catch (e: any) {
+      setError(e.message || "Löschen fehlgeschlagen.");
+    }
   }
 
   const todayMeals = useMemo(
@@ -237,13 +271,14 @@ export default function App() {
     [meals]
   );
 
+  const todayItems = useMemo(() => todayMeals.flatMap((m) => m.items), [todayMeals]);
+
   const todayTotals = useMemo(() => {
-    const all = todayMeals.flatMap((m) => m.items);
     return MACRO_KEYS.reduce((acc, k) => {
-      acc[k] = sumKey(all, k as keyof FoodItem);
+      acc[k] = sumKey(todayItems, k as keyof FoodItem);
       return acc;
     }, {} as Record<string, number>);
-  }, [todayMeals]);
+  }, [todayItems]);
 
   const last7 = useMemo(() => {
     const now = new Date();
@@ -287,6 +322,11 @@ export default function App() {
       </header>
 
       <main className="container">
+        {!online && (
+          <div className="error-banner" style={{ background: "#fff3e0", borderColor: "#ffcc80", color: "#8a6d00" }}>
+            📴 Offline – Mahlzeiten werden lokal gespeichert und synchronisiert, wenn wieder online.
+          </div>
+        )}
         {health && !health.mistral && (
           <div className="error-banner">
             ⚠️ Mistral API-Key fehlt im Backend. Fotos können nicht analysiert werden.
@@ -318,6 +358,7 @@ export default function App() {
         {view === "today" && (
           <TodayView
             todayMeals={todayMeals}
+            todayItems={todayItems}
             totals={todayTotals}
             onDownload={handleDownloadCsv}
             onSync={syncNow}
@@ -514,6 +555,7 @@ function BeerToggle({ checked, onChange }: { checked: boolean; onChange: (b: boo
 
 function TodayView({
   todayMeals,
+  todayItems,
   totals,
   onDownload,
   onSync,
@@ -537,7 +579,7 @@ function TodayView({
           {MICRO_KEYS.slice(0, 8).map((k) => (
             <div key={k}>
               <span>{MACRO_LABELS[k]}</span>
-              <b>{Math.round(sumKey(todayMeals.flatMap((m: Meal) => m.items), k as keyof FoodItem) * 100) / 100}</b>
+              <b>{Math.round(sumKey(todayItems, k as keyof FoodItem) * 100) / 100}</b>
             </div>
           ))}
         </div>

@@ -46,7 +46,9 @@ Extrahiert Makronährstoffe, Vitamine und Mineralstoffe aus einem Foto vom Essen
 - ✅ **Sanity Check** der erkannten Portionsgrößen
 - 🏠 **Proxmox-Deployment** (Docker)
 
-## Setup (Entwicklung)
+## ⚡ Installation & Voraussetzungen
+
+Eine vollständige Installationsanleitung mit allen Voraussetzungen (Node.js, Docker, API-Keys, HTTPS-Reverse-Proxy) findest du in **[INSTALL.md](INSTALL.md)**.
 
 ```bash
 # 1. Dependencies installieren

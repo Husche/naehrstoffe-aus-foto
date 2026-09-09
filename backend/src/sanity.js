@@ -24,7 +24,7 @@ const GLOBAL_MAX = 2500;
 
 export function sanityCheckPortion(name, portion_g, category = "Sonstiges") {
   const issues = [];
-  const range = CATEGORY_RANGES[category] || CATEGORY_RANGES.Sonstiges;
+  const range = CATEGORY_RANGES[category] || CATEGORY_RANGES[Object.keys(CATEGORY_RANGES).find((k) => k.toLowerCase() === String(category).toLowerCase()) || "Sonstiges"];
   if (portion_g < GLOBAL_MIN) {
     issues.push(`${name}: ${portion_g}g ist sehr klein (< ${GLOBAL_MIN}g)`);
   }
