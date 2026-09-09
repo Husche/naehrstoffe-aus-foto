@@ -76,6 +76,10 @@ jobs:
           assert(scaled.protein_g === 20, "scaleNutrients protein");
           assert(scaled.trans_fat_g === 2, "scaleNutrients trans_fat");
 
+          // fetchNutrientsBatch exportiert (Parallelisierung)
+          const m = await import("./src/nutrition.js");
+          assert(typeof m.fetchNutrientsBatch === "function", "fetchNutrientsBatch exportiert");
+
           if (failures === 0) { console.log("\n✓ Alle Backend-Tests bestanden"); process.exit(0); }
           else { console.error(`\n✗ ${failures} fehlgeschlagen`); process.exit(1); }
           TESTEOF

@@ -64,21 +64,45 @@ export const NUTRIENT_COLUMNS = [
   "cholesterol_mg",
 ];
 
+// Einfaches LRU-Caching mit Begrenzung gegen unendliches Speicherwachstum.
+const CACHE_MAX = 200;
 const cache = new Map();
+
+function cacheGet(key) {
+  if (!cache.has(key)) return undefined;
+  const v = cache.get(key);
+  cache.delete(key);
+  cache.set(key, v);
+  return v;
+}
+
+function cacheSet(key, val) {
+  if (cache.has(key)) cache.delete(key);
+  cache.set(key, val);
+  if (cache.size > CACHE_MAX) {
+    const oldest = cache.keys().next().value;
+    cache.delete(oldest);
+  }
+}
 
 export async function fetchNutrients(foodName) {
   const key = foodName.toLowerCase().trim();
-  if (cache.has(key)) return cache.get(key);
+  const cached = cacheGet(key);
+  if (cached) return cached;
 
   const url = `${config.nutrition.baseUrl}/cgi/search.pl?search_terms=${encodeURIComponent(
     foodName
-  )}&search_simple=1&action=process&json=1&page_size=5`;
+  )}&search_simple=1&action=process&json=1&page_size=10&fields=product_name,code,nutriments`;
 
   let product = null;
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
     const res = await fetch(url, {
       headers: { "User-Agent": "NaehrstoffFoto/1.0 (self-hosted)" },
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
     if (res.ok) {
       const data = await res.json();
       const products = data.products || [];
@@ -89,25 +113,38 @@ export async function fetchNutrients(foodName) {
   }
 
   const result = extractNutrients(product);
-  cache.set(key, result);
+  cacheSet(key, result);
   return result;
 }
 
 function pickBest(products, query) {
   if (!products.length) return null;
-  // Bevorzuge Produkte mit vollständigen Nährstoffdaten und passendem Namen.
-  const scored = products.map((p) => {
+  const q = query.toLowerCase();
+  let best = null;
+  let bestScore = -1;
+  for (const p of products) {
     let score = 0;
-    const n = (p.nutriments || {}) ;
-    if (n["energy-kcal_100g"] || n.energy_kcal_100g) score += 5;
+    const n = p.nutriments || {};
+    // Datenqualität: komplette Makros am wichtigsten.
+    if (n["energy-kcal_100g"] != null) score += 5;
     if (n.proteins_100g != null) score += 3;
     if (n.carbohydrates_100g != null) score += 3;
     if (n.fat_100g != null) score += 3;
-    if ((p.product_name || "").toLowerCase().includes(query)) score += 4;
-    return { p, score };
-  });
-  scored.sort((a, b) => b.score - a.score);
-  return scored[0].p;
+    if (n.fiber_100g != null) score += 2;
+    // Namensübereinstimmung als starkes Signal.
+    const name = (p.product_name || "").toLowerCase();
+    if (name === q) score += 10;
+    else if (name.startsWith(q)) score += 7;
+    else if (name.includes(q)) score += 5;
+    else if (q.includes(name) && name.length > 2) score += 3;
+    // Bevorzuge deutsche Produkte (bessere Treffer für deutsche Lebensmittelnamen).
+    if (p.countries_tags && p.countries_tags.includes("en:germany")) score += 1;
+    if (score > bestScore) {
+      bestScore = score;
+      best = p;
+    }
+  }
+  return best;
 }
 
 function extractNutrients(product) {
@@ -125,7 +162,7 @@ function extractNutrients(product) {
   }
   // Fallback: kcal aus kJ ableiten (1 kcal = 4.184 kJ), falls nur Joule geliefert.
   if ((!base.kcal || base.kcal === 0) && (n["energy-kj_100g"] || n.energy_kj_100g)) {
- base.kcal = Math.round((Number(n["energy-kj_100g"] ?? n.energy_kj_100g)) / 4.184);
+    base.kcal = Math.round((Number(n["energy-kj_100g"] ?? n.energy_kj_100g)) / 4.184);
   }
   base.source = product.product_name || product.code || "openfoodfacts";
   return base;
@@ -138,6 +175,11 @@ export function scaleNutrients(per100, grams) {
     out[c] = round2((per100[c] || 0) * factor);
   }
   return out;
+}
+
+// Parallelisierte Nährstoffabfrage für mehrere Lebensmittel.
+export async function fetchNutrientsBatch(foodNames) {
+  return Promise.all(foodNames.map((n) => fetchNutrients(n)));
 }
 
 function round2(v) {

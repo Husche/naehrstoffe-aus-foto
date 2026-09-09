@@ -3,7 +3,7 @@ import cors from "cors";
 import multer from "multer";
 import { config } from "./config.js";
 import { detectFood } from "./mistral.js";
-import { fetchNutrients, scaleNutrients, NUTRIENT_COLUMNS } from "./nutrition.js";
+import { fetchNutrientsBatch, scaleNutrients } from "./nutrition.js";
 import { sanityCheckMeal } from "./sanity.js";
 import { buildCsv } from "./csv.js";
 import {
@@ -45,14 +45,12 @@ app.post("/api/analyze", upload.single("photo"), async (req, res) => {
 
     const detected = await detectFood(base64, mime);
 
-    // Nährstoffe für jedes Lebensmittel holen und skalieren.
-    const items = [];
-    let beerDetected = false;
-    for (const d of detected) {
-      const per100 = await fetchNutrients(d.name);
+    // Nährstoffe parallel für alle Lebensmittel abfragen.
+    const per100s = await fetchNutrientsBatch(detected.map((d) => d.name));
+    const items = detected.map((d, i) => {
+      const per100 = per100s[i];
       const scaled = scaleNutrients(per100, d.portion_g);
-      if (d.is_beer) beerDetected = true;
-      items.push({
+      return {
         name: d.name,
         category: d.category,
         portion_g: d.portion_g,
@@ -60,8 +58,9 @@ app.post("/api/analyze", upload.single("photo"), async (req, res) => {
         source: per100.source,
         per100,
         ...scaled,
-      });
-    }
+      };
+    });
+    const beerDetected = items.some((it) => it.is_beer);
 
     const sanityIssues = sanityCheckMeal(items);
 

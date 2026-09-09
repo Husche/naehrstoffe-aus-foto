@@ -23,6 +23,7 @@ import {
   markSynced,
 } from "./storage.ts";
 import { faceIdAvailable, isRegistered, register, verify, webauthnSupported } from "./auth.ts";
+import { compressImage } from "./image.ts";
 
 type View = "capture" | "today" | "history";
 
@@ -81,10 +82,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const handler = () => { if (navigator.onLine) trySync(); };
+    window.addEventListener("online", handler);
     if (navigator.onLine) trySync();
-    window.addEventListener("online", trySync);
-    return () => window.removeEventListener("online", trySync);
-  }, [meals]);
+    return () => window.removeEventListener("online", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [driveConnected]);
 
   async function refreshMeals() {
     const all = await getAllMeals();
@@ -119,7 +122,8 @@ export default function App() {
     const url = URL.createObjectURL(file);
     setPreview(url);
     try {
-      const res: AnalyzeResponse = await analyzePhoto(file);
+      const compressed = await compressImage(file);
+      const res: AnalyzeResponse = await analyzePhoto(compressed);
       const items = res.items.length ? res.items : [];
       const beer = res.beer_detected || items.some((i) => i.is_beer);
       setDraft({
@@ -401,20 +405,22 @@ function CaptureView({
             <>
               <button
                 className="camera-btn"
+                aria-label="Foto mit Kamera aufnehmen"
                 onClick={() => document.getElementById("cam-input")?.click()}
               >
-                <span className="icon">📷</span>
+                <span className="icon" aria-hidden="true">📷</span>
                 Foto aufnehmen
               </button>
               <button
                 className="upload-btn"
+                aria-label="Bild aus Galerie auswählen"
                 onClick={() => document.getElementById("upload-input")?.click()}
               >
-                📁 Bild auswählen
+                <span aria-hidden="true">📁</span> Bild auswählen
               </button>
-              {preview && <img src={preview} className="preview" alt="Vorschau" />}
-              <input id="cam-input" type="file" accept="image/*" capture="environment" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) onPickFile(f); e.target.value = ""; }} />
-              <input id="upload-input" type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) onPickFile(f); e.target.value = ""; }} />
+              {preview && <img src={preview} className="preview" alt="Vorschau des aufgenommenen Essens" />}
+              <input id="cam-input" type="file" accept="image/*" capture="environment" aria-label="Kamera-Foto auswählen" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) onPickFile(f); e.target.value = ""; }} />
+              <input id="upload-input" type="file" accept="image/*" aria-label="Bild aus Galerie auswählen" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) onPickFile(f); e.target.value = ""; }} />
             </>
           )}
         </div>
@@ -453,7 +459,7 @@ function CaptureView({
                   />
                   <span>g</span>
                 </div>
-                <button className="danger" onClick={() => removeItem(i)} style={{ padding: "6px 10px" }}>✕</button>
+                <button className="danger" aria-label="Lebensmittel entfernen" onClick={() => removeItem(i)} style={{ padding: "8px 12px", minHeight: 44 }}><span aria-hidden="true">✕</span></button>
               </div>
               <div className="nutrients">
                 <span><b>{Math.round(it.kcal)}</b> kcal</span>
@@ -488,12 +494,15 @@ function BeerToggle({ checked, onChange }: { checked: boolean; onChange: (b: boo
   return (
     <div className="beer-toggle">
       <div className="label">
-        🍺 Alkohol heute
+        <span aria-hidden="true">🍺</span> Alkohol heute
         <small>Beer-Flag für deine Pipeline</small>
       </div>
       <label className="switch">
         <input
           type="checkbox"
+          role="switch"
+          aria-checked={checked}
+          aria-label="Alkohol-Flag aktivieren"
           checked={checked}
           onChange={(e) => onChange(e.target.checked)}
         />

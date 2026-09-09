@@ -4,8 +4,11 @@ const DB_NAME = "naehrstoff-foto";
 const DB_VERSION = 1;
 const STORE = "meals";
 
+let dbPromise: Promise<IDBDatabase> | null = null;
+
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
@@ -16,6 +19,7 @@ function openDb(): Promise<IDBDatabase> {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
+  return dbPromise;
 }
 
 export async function saveMeal(meal: Meal): Promise<void> {
@@ -48,11 +52,29 @@ export async function deleteMeal(meal_id: string): Promise<void> {
   });
 }
 
+// Nur ungesyncerte Mahlzeiten via Cursor-Filter statt getAll + filter.
 export async function getUnsyncedMeals(): Promise<Meal[]> {
-  const all = await getAllMeals();
-  return all.filter((m) => !m.synced);
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readonly");
+    const store = tx.objectStore(STORE);
+    const req = store.openCursor();
+    const result: Meal[] = [];
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (cursor) {
+        const meal = cursor.value as Meal;
+        if (!meal.synced) result.push(meal);
+        cursor.continue();
+      } else {
+        resolve(result);
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
 }
 
+// Direktes Update des synced-Flags ohne get+put.
 export async function markSynced(meal_id: string): Promise<void> {
   const db = await openDb();
   return new Promise((resolve, reject) => {
