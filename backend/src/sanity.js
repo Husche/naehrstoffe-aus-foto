@@ -36,7 +36,6 @@ export function sanityCheckPortion(name, portion_g, category = "Sonstiges") {
       `${name}: ${portion_g}g liegt außerhalb des üblichen Bereichs für "${category}" (${range[0]}–${range[1]}g)`
     );
   }
-  // Mehrkalorien-Sanity: > 3000 kcal pro Item ist unrealistisch, Basisladung meist < 1500.
   return issues;
 }
 
