@@ -1,8 +1,33 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import { config } from "./config.js";
 
 const SCOPE = "https://www.googleapis.com/auth/drive.file";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+
+// Token-Persistenz: Tokens überleben einen Server-Neustart (Docker/Proxmox),
+// damit der OAuth-Flow nicht bei jedem Recycle wiederholt werden muss.
+const TOKEN_FILE = path.resolve(process.cwd(), "data", "drive_tokens.json");
+
+async function persistTokens() {
+  if (!config.drive.tokens) return;
+  try {
+    await fs.mkdir(path.dirname(TOKEN_FILE), { recursive: true });
+    await fs.writeFile(TOKEN_FILE, JSON.stringify(config.drive.tokens), "utf-8");
+  } catch {
+    /* nicht fatal: In-Memory-Token gilt für Prozesslebensdauer */
+  }
+}
+
+async function loadPersistedTokens() {
+  try {
+    const raw = await fs.readFile(TOKEN_FILE, "utf-8");
+    config.drive.tokens = JSON.parse(raw);
+  } catch {
+    /* keine Datei -> nicht verbunden */
+  }
+}
 
 export function getAuthUrl(state = "naehrstoff") {
   const params = new URLSearchParams({
@@ -33,8 +58,12 @@ export async function exchangeCode(code) {
     throw new Error(`Google Token Exchange fehlgeschlagen: ${await res.text()}`);
   }
   const tokens = await res.json();
-  config.drive.tokens = tokens;
-  return tokens;
+  config.drive.tokens = {
+    ...tokens,
+    expires_at: Date.now() + (tokens.expires_in || 3600) * 1000,
+  };
+  await persistTokens();
+  return config.drive.tokens;
 }
 
 export async function refreshIfNeeded() {
@@ -62,15 +91,11 @@ export async function refreshIfNeeded() {
     ...fresh,
     expires_at: Date.now() + (fresh.expires_in || 3600) * 1000,
   };
+  await persistTokens();
   return config.drive.tokens.access_token;
 }
 
-export function setTokens(tokens) {
-  config.drive.tokens = {
-    ...tokens,
-    expires_at: Date.now() + (tokens.expires_in || 3600) * 1000,
-  };
-}
+// Beim Modul-Laden persistierte Tokens wiederherstellen (sicherer Hook am Dateiende).
 
 export function isConnected() {
   return !!config.drive.tokens;
@@ -110,3 +135,6 @@ export async function uploadCsvToDrive(filename, csvContent) {
   const data = await res.json();
   return data;
 }
+
+// Persistierte Tokens beim Modul-Laden wiederherstellen (Fire-and-forget).
+loadPersistedTokens();

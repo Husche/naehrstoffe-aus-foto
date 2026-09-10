@@ -3,7 +3,10 @@ dotenv.config();
 
 export const config = {
   port: parseInt(process.env.PORT || "8787", 10),
-  corsOrigin: process.env.CORS_ORIGIN || "*",
+  // Default: gleicher Origin (Backend serviert das Frontend selbst).
+  // Für getrennte Dev-Server CORS_ORIGIN=http://localhost:5173 setzen.
+  // Achtung: "*" erlaubt jeden Origin -> nur für lokales Dev, nicht im Netz.
+  corsOrigin: process.env.CORS_ORIGIN || "",
   mistral: {
     apiKey: process.env.MISTRAL_API_KEY || "",
     model: process.env.MISTRAL_MODEL || "mistral-large-latest",
@@ -33,3 +36,9 @@ export function requireEnv(name) {
   }
   return v;
 }
+
+// Warnung bei CORS=* (nur Dev): Backend hat keine eigene Authentifizierung.
+// WebAuthn/FaceID schützt ausschließlich den Frontend-Login; die REST-API
+// (/api/meals etc.) ist ohne Reverse-Proxy/Auth für jeden erreichbar, der die
+// URL kennt. Für Proxmox/Netzbetrieb CORS_ORIGIN restriktiv setzen und idealerweise
+// einen Auth-Layer (Reverse Proxy Basic Auth / mTLS) vorschalten.

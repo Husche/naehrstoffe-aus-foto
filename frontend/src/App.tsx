@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FoodItem, Meal, AnalyzeResponse } from "./types.ts";
 import {
   MACRO_KEYS,
@@ -89,10 +89,15 @@ export default function App() {
   const [online, setOnline] = useState(navigator.onLine);
   const [undo, setUndo] = useState<{ meal: Meal } | null>(null);
   const [theme, setTheme] = useState(() => (localStorage.getItem("naehrstoff_theme") as string) || "auto");
+  // Ref für den Undo-Timer, damit er beim Unmount/re-Trigger sicher gelöscht wird.
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  // Undo-Timer beim Unmount sicher löschen (kein setState auf ungemounteter Komponente).
+  useEffect(() => () => { if (undoTimer.current) clearTimeout(undoTimer.current); }, []);
 
   useEffect(() => {
     getHealth().then((h) => setHealth({ mistral: h.mistral, drive: h.drive })).catch(() => setHealth({ mistral: false, drive: false }));
@@ -110,6 +115,17 @@ export default function App() {
     window.addEventListener("online", on);
     window.addEventListener("offline", off);
     return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
+  }, []);
+
+  // Tageswechsel: "Heute"-Filter aktualisiert sich um Mitternacht, auch ohne
+  // neue meals-Änderung. Prüft jede Minute und triggert ein Re-Render via todayKey.
+  const [todayKey, setTodayKey] = useState(() => new Date().toDateString());
+  useEffect(() => {
+    const t = setInterval(() => {
+      const key = new Date().toDateString();
+      setTodayKey((prev) => (prev === key ? prev : key));
+    }, 60000);
+    return () => clearInterval(t);
   }, []);
 
   // Drive-Status periodisch prüfen (alle 30s), damit OAuth-Verbindung erkannt wird.
@@ -262,7 +278,19 @@ export default function App() {
     try {
       const url = await getDriveAuthUrl();
       window.open(url, "_blank");
-      setTimeout(() => getDriveStatus().then(setDriveConnected), 3000);
+      // Statt fester 3s: pollen, bis Drive verbunden (max ~2 Min). Der OAuth-Flow
+      // erfordert manuelle Consent im neuen Tab, 3s sind fast immer zu kurz.
+      let attempts = 0;
+      const poll = setInterval(() => {
+        attempts++;
+        getDriveStatus().then((c) => {
+          if (c) {
+            setDriveConnected(true);
+            clearInterval(poll);
+          }
+        }).catch(() => {});
+        if (attempts > 40) clearInterval(poll); // ~2 Min, dann übernimmt das 30s-Polling
+      }, 3000);
     } catch (e: any) {
       setError(e.message || "Google Drive konnte nicht verbunden werden.");
     }
@@ -311,7 +339,8 @@ export default function App() {
       refreshMeals();
       if (meal) {
         setUndo({ meal });
-        setTimeout(() => setUndo(null), 6000);
+        if (undoTimer.current) clearTimeout(undoTimer.current);
+        undoTimer.current = setTimeout(() => setUndo(null), 6000);
       }
     } catch (e: any) {
       setError(e.message || "Löschen fehlgeschlagen.");
@@ -320,6 +349,7 @@ export default function App() {
 
   async function undoDelete() {
     if (!undo) return;
+    if (undoTimer.current) { clearTimeout(undoTimer.current); undoTimer.current = null; }
     try {
       await saveMeal(undo.meal);
       if (navigator.onLine) {
@@ -334,7 +364,8 @@ export default function App() {
 
   const todayMeals = useMemo(
     () => meals.filter((m) => isSameDay(m.timestamp, new Date())),
-    [meals]
+    // todayKey erzwingt Re-Berechnung beim Tageswechsel (Mitternacht).
+    [meals, todayKey]
   );
 
   const todayItems = useMemo(() => todayMeals.flatMap((m) => m.items), [todayMeals]);
@@ -380,7 +411,7 @@ export default function App() {
     <div>
       <header className="app-header">
         <h1>🍽️ Nährstoffe aus Foto</h1>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="header-controls">
           <button
             className="theme-toggle"
             aria-label={`Design: ${theme}`}
@@ -402,7 +433,7 @@ export default function App() {
 
       <main className="container">
         {!online && (
-          <div className="error-banner" style={{ background: "#fff3e0", borderColor: "#ffcc80", color: "#8a6d00" }}>
+          <div className="error-banner banner-offline">
             📴 Offline – Mahlzeiten werden lokal gespeichert und synchronisiert, wenn wieder online.
           </div>
         )}
@@ -413,7 +444,7 @@ export default function App() {
         )}
         {error && <div className="error-banner">{error}</div>}
         {syncMsg && (
-          <div className="sanity" style={{ background: "#e6f0ec", color: "#0b3d2e", borderColor: "#2e8b57" }}>
+          <div className="sanity banner-sync">
             {syncMsg}
           </div>
         )}
@@ -479,14 +510,14 @@ function LoginScreen({
 }) {
   return (
     <div className="login-screen">
-      <div style={{ fontSize: 48 }}>🍽️</div>
+      <div className="login-emoji">🍽️</div>
       <h2>Nährstoffe aus Foto</h2>
       <p>
         Mobile Nährstoffschätzung aus Mahlzeiten-Fotos. Bitte mit {faceId ? "Face ID" : "Gesichtserkennung"} entsperren.
       </p>
       {error && <div className="error-banner">{error}</div>}
       {!webauthnOk && (
-        <p style={{ color: "var(--danger)" }}>
+        <p className="login-hint">
           Dein Browser unterstützt keine Gesichtserkennung (WebAuthn). Du kannst die App trotzdem nutzen.
         </p>
       )}
@@ -496,9 +527,8 @@ function LoginScreen({
         <button onClick={onRegister}>Gesichtserkennung einrichten</button>
       )}
       <button
-        className="ghost"
+        className="ghost btn-skip"
         onClick={onLogin}
-        style={{ marginTop: 4, fontSize: 14 }}
       >
         Überspringen
       </button>
@@ -518,7 +548,19 @@ function CaptureView({
   setBeer,
   saveMealLocal,
   onDiscard,
-}: any) {
+}: {
+  loading: boolean;
+  preview: string | null;
+  onPickFile: (file: File) => void;
+  draft: Meal | null;
+  updatePortion: (idx: number, value: number) => void;
+  removeItem: (idx: number) => void;
+  addItem: () => void;
+  editItemName: (idx: number, name: string) => void;
+  setBeer: (b: boolean) => void;
+  saveMealLocal: () => void;
+  onDiscard: () => void;
+}) {
   return (
     <div>
       {!draft && (
@@ -585,7 +627,7 @@ function CaptureView({
                   />
                   <span>g</span>
                 </div>
-                <button className="danger" aria-label="Lebensmittel entfernen" onClick={() => removeItem(i)} style={{ padding: "8px 12px", minHeight: 44 }}><span aria-hidden="true">✕</span></button>
+                <button className="danger btn-remove-item" aria-label="Lebensmittel entfernen" onClick={() => removeItem(i)}><span aria-hidden="true">✕</span></button>
               </div>
               <div className="nutrients">
                 <span><b>{Math.round(it.kcal)}</b> kcal</span>
@@ -593,11 +635,11 @@ function CaptureView({
                 <span>F: <b>{it.fat_g}g</b></span>
                 <span>KH: <b>{it.carbs_g}g</b></span>
                 <span>Ballast: <b>{it.fiber_g}g</b></span>
-                <span style={{ fontSize: 11 }}>Quelle: {it.source}</span>
+                <span className="nutrient-source">Quelle: {it.source}</span>
               </div>
             </div>
           ))}
-          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+          <div className="add-row">
             <button className="ghost" onClick={addItem}>+ Lebensmittel hinzufügen</button>
           </div>
 
@@ -647,7 +689,16 @@ function TodayView({
   onRemove,
   driveConnected,
   connectDrive,
-}: any) {
+}: {
+  todayMeals: Meal[];
+  todayItems: FoodItem[];
+  totals: Record<string, number>;
+  onDownload: (meal: Meal) => void;
+  onSync: (meal: Meal) => void;
+  onRemove: (id: string) => void;
+  driveConnected: boolean;
+  connectDrive: () => void;
+}) {
   return (
     <div>
       <div className="card">
@@ -678,14 +729,14 @@ function TodayView({
       )}
 
       {todayMeals.length === 0 && (
-        <div className="card" style={{ textAlign: "center", color: "var(--muted)" }}>
+        <div className="card empty-card">
           Noch keine Mahlzeit heute. Mach ein Foto!
         </div>
       )}
 
       {todayMeals.map((m: Meal) => (
         <div className="card" key={m.meal_id}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div className="meal-header">
             <strong>{fmtTime(m.timestamp)} Uhr</strong>
             {m.synced ? (
               <span className="synced-badge">synchronisiert</span>
@@ -693,14 +744,14 @@ function TodayView({
               <span className="pending-badge">offline</span>
             )}
           </div>
-          <div style={{ margin: "8px 0" }}>
+          <div className="meal-items">
             {m.items.map((it, i) => (
-              <div key={i} style={{ fontSize: 14 }}>
+              <div key={i} className="meal-item-line">
                 {it.name} – {it.portion_g}g · {Math.round(it.kcal)} kcal
               </div>
             ))}
           </div>
-          {m.beer_flag && <div style={{ color: "var(--beer)", fontSize: 14 }}>🍺 Alkohol-Flag aktiv</div>}
+          {m.beer_flag && <div className="beer-flag">🍺 Alkohol-Flag aktiv</div>}
           <div className="action-row">
             <button className="ghost" onClick={() => onDownload(m)}>⬇️ CSV</button>
             {driveConnected && !m.synced && (
@@ -717,9 +768,9 @@ function TodayView({
 function HistoryView({ groups, onRemove }: { groups: [string, Meal[]][]; onRemove: (id: string) => void }) {
   return (
     <div>
-      <h3 style={{ color: "var(--muted)", marginBottom: 8 }}>Letzte 7 Tage</h3>
+      <h3 className="history-title">Letzte 7 Tage</h3>
       {groups.length === 0 && (
-        <div className="card" style={{ textAlign: "center", color: "var(--muted)" }}>
+        <div className="card empty-card">
           Noch keine Historie vorhanden.
         </div>
       )}
@@ -738,15 +789,15 @@ function HistoryView({ groups, onRemove }: { groups: [string, Meal[]][]; onRemov
                       {m.beer_flag && " 🍺"}
                     </div>
                   </div>
-                  <div style={{ textAlign: "right" }}>
+                  <div className="history-right">
                     <div className="kcal">{Math.round(kcal)} kcal</div>
                     {m.synced ? (
                       <span className="synced-badge">sync</span>
                     ) : (
                       <span className="pending-badge">offline</span>
                     )}
-                    <div style={{ marginTop: 6 }}>
-                      <button className="danger" style={{ padding: "4px 8px", fontSize: 12 }} onClick={() => onRemove(m.meal_id)}>Löschen</button>
+                    <div className="history-actions">
+                      <button className="danger btn-remove-sm" onClick={() => onRemove(m.meal_id)}>Löschen</button>
                     </div>
                   </div>
                 </div>

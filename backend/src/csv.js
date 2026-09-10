@@ -24,7 +24,7 @@ export function buildCsv(meal) {
       if (col === "timestamp") return csvEsc(meal.timestamp);
       if (col === "meal_id") return csvEsc(meal.meal_id);
       if (col === "food_item") return csvEsc(item.name);
-      if (col === "portion_g") return num(item.portion_g);
+      if (col === "portion_g") return num(Math.max(0, item.portion_g));
       if (col === "beer_flag") return meal.beer_flag ? "1" : "0";
       if (col === "kcal") return num(item.kcal);
       const v = item[col];
@@ -43,5 +43,8 @@ function csvEsc(v) {
 function num(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "";
-  return String(Math.round((n + Number.EPSILON) * 100) / 100);
+  // Negativ-Werte (z. B. durch manipulierte Portionsgroessen) auf 0 begrenzen,
+  // damit keine negativen Nährwerte in die Apple-Health-Pipeline gelangen.
+  const clamped = n < 0 ? 0 : n;
+  return String(Math.round((clamped + Number.EPSILON) * 100) / 100);
 }

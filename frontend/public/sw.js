@@ -3,15 +3,27 @@
 // API-Anfragen werden bewusst NICHT gecacht (immer frisch vom Backend).
 
 const CACHE_NAME = "naehrstoff-v__APP_VERSION__";
+// "/" und "/index.html" liefern denselben Inhalt -> nur einmal cachen (Dedup).
 const APP_SHELL = [
-  "/",
   "/index.html",
   "/manifest.webmanifest",
 ];
 
 self.addEventListener("install", (event) => {
+  // Per-Resource-Caching statt addAll: addAll schlägt atomar fehl, wenn EINE Resource
+  // 404 liefert, was den gesamten Offline-Cache verhindern würde. Hier fährt der
+  // Install auch mit partieller Shell durch (Stale-while-revalidate füllt nach).
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then(async (cache) => {
+      await Promise.all(
+        APP_SHELL.map(async (url) => {
+          try { await cache.add(url); } catch (e) { /* einzeln tolerieren */ }
+        })
+      );
+      // Start-URL "/" explizit als index.html-Alias vorcachen.
+      try { await cache.add("/"); } catch (e) { /* ignore */ }
+      self.skipWaiting();
+    })
   );
 });
 

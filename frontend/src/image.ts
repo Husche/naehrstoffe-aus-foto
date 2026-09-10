@@ -11,6 +11,8 @@ const QUALITY = 0.85;
 const MIN_SIZE = 1024 * 1024;
 
 // EXIF-Orientierungs-Tag auslesen (JPEG-APP1-Segment).
+// TIFF-Header: 2 Byte Byte-Order (II/MM), 2 Byte Magic (0x002A), 4 Byte IFD0-Offset (relativ zum TIFF-Start).
+// IFD0: 2 Byte Eintragszahl, dann je 12 Byte Eintrag (Tag, Typ, Zaehler, Wert).
 function readExifOrientation(file: File): Promise<number> {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -20,28 +22,35 @@ function readExifOrientation(file: File): Promise<number> {
         if (buf.byteLength < 2 || buf.getUint16(0) !== 0xffd8) return resolve(1);
         let offset = 2;
         let marker;
-        while (offset < buf.byteLength) {
+        while (offset + 2 <= buf.byteLength) {
           marker = buf.getUint16(offset);
           offset += 2;
           if (marker === 0xffe1) {
-            if (buf.getUint32(offset) === 0x45786966) {
-              offset += 6;
-              const little = buf.getUint16(offset) === 0x4949;
-              offset += 2;
-              const ifd0 = offset + buf.getUint32(offset, little);
-              offset += 4;
-              const count = buf.getUint16(ifd0, little);
-              for (let i = 0; i < count; i++) {
-                const e = ifd0 + 2 + i * 12;
-                if (buf.getUint16(e, little) === 0x0112) {
-                  return resolve(buf.getUint16(e + 8, little));
-                }
+            // Nach dem Marker folgt die 2-Byte-Segmentlaenge, erst danach "Exif\0\0".
+            // Ohne dieses Skip wuerde getUint32 auf die Laengen-Bytes zeigen und die
+            // Exif-Magic niemals erkennen -> Orientierung waere immer 1 (korrigiert).
+            if (offset + 2 > buf.byteLength) return resolve(1);
+            offset += 2;
+            if (offset + 4 > buf.byteLength || buf.getUint32(offset) !== 0x45786966) return resolve(1);
+            offset += 6; // skip "Exif\0\0" -> jetzt am TIFF-Header
+            const tiffStart = offset;
+            if (tiffStart + 8 > buf.byteLength) return resolve(1);
+            const little = buf.getUint16(tiffStart) === 0x4949;
+            const ifd0 = tiffStart + buf.getUint32(tiffStart + 4, little);
+            if (ifd0 + 2 > buf.byteLength) return resolve(1);
+            const count = buf.getUint16(ifd0, little);
+            for (let i = 0; i < count; i++) {
+              const e = ifd0 + 2 + i * 12;
+              if (e + 12 > buf.byteLength) break;
+              if (buf.getUint16(e, little) === 0x0112) {
+                return resolve(buf.getUint16(e + 8, little));
               }
             }
             return resolve(1);
           } else if ((marker & 0xff00) !== 0xff00) {
             return resolve(1);
           } else {
+            if (offset + 2 > buf.byteLength) return resolve(1);
             offset += buf.getUint16(offset);
           }
         }

@@ -169,7 +169,7 @@ function extractNutrients(product) {
 }
 
 export function scaleNutrients(per100, grams) {
-  const factor = grams / 100;
+  const factor = Math.max(0, Number(grams) || 0) / 100;
   const out = {};
   for (const c of NUTRIENT_COLUMNS) {
     out[c] = round2((per100[c] || 0) * factor);

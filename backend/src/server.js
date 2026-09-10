@@ -19,7 +19,13 @@ import {
 } from "./store.js";
 
 const app = express();
-app.use(cors({ origin: config.corsOrigin }));
+app.use(
+  cors(
+    // Leerer Origin-String -> gleicher Origin (Backend serviert Frontend selbst).
+    // CORS_ORIGIN=* nur explizit für Dev setzen (siehe config.js).
+    config.corsOrigin ? { origin: config.corsOrigin } : undefined
+  )
+);
 app.use(express.json({ limit: "25mb" }));
 
 const upload = multer({
@@ -177,7 +183,11 @@ app.post("/api/drive/upload", async (req, res) => {
 });
 
 // --- SPA Fallback (nur für nicht-API-Routen) ---
-app.get("*", (req, res) => {
+app.get("*", (req, res, next) => {
+  // API-Routen, die hier landen, sind unbekannt -> sauberer 404 statt index.html.
+  if (req.path.startsWith("/api/") || req.path.startsWith("/oauth/")) {
+    return res.status(404).json({ error: "Nicht gefunden." });
+  }
   res.sendFile("index.html", { root: "../frontend/dist" }, (err) => {
     if (err) res.status(404).send("Frontend nicht gebaut. Führe 'npm run build' aus.");
   });

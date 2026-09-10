@@ -190,7 +190,7 @@ export function rescaleItem(item: FoodItem): FoodItem {
   const p = item.per100;
   if (!p || Object.keys(p).length === 0) return item;
   const grams = Number.isFinite(item.portion_g) && item.portion_g >= 0 ? item.portion_g : 0;
-  const factor = grams / 100;
+  const factor = Math.max(0, grams) / 100;
   const copy: FoodItem = { ...item };
   for (const k of NUTRIENT_NUMERIC_KEYS) {
     const base = Number(p[k as string] ?? 0);

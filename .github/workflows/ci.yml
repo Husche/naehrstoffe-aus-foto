@@ -75,6 +75,8 @@ jobs:
           assert(scaled.kcal === 400, "scaleNutrients kcal");
           assert(scaled.protein_g === 20, "scaleNutrients protein");
           assert(scaled.trans_fat_g === 2, "scaleNutrients trans_fat");
+          assert(scaleNutrients({ kcal: 200 }, -50).kcal === 0, "scaleNutrients negativ -> 0 (Clamp)");
+          assert(buildCsv({ meal_id: "m", timestamp: "t", beer_flag: false, items: [{ name: "X", portion_g: -50, kcal: -100 }] }).includes(",0,,0,"), "CSV: negative Werte geclampt");
 
           // fetchNutrientsBatch exportiert (Parallelisierung)
           const m = await import("./src/nutrition.js");
@@ -105,25 +107,20 @@ jobs:
       - name: Frontend logic tests (rescale)
         working-directory: frontend
         run: |
-          cat > src/lib.test.mjs <<'TESTEOF'
-          let failures = 0;
-          function assert(c, m) { if (!c) { console.error("FAIL:", m); failures++; } else console.log("ok:", m); }
-          const KEYS = ["kcal","protein_g","fat_g","carbs_g","fiber_g","sodium_mg","calcium_mg","magnesium_mg","vitamin_c_mg"];
-          function rescale(item, per100, grams) {
-            const factor = (Number.isFinite(grams) && grams >= 0 ? grams : 0) / 100;
-            const out = { ...item };
-            for (const k of KEYS) out[k] = Math.round((Number(per100[k] ?? 0) * factor) * 100) / 100;
-            return out;
-          }
-          const per100 = { kcal: 200, protein_g: 10, fat_g: 5, carbs_g: 30, fiber_g: 2, sodium_mg: 50, calcium_mg: 20, magnesium_mg: 15, vitamin_c_mg: 3 };
-          const scaled = rescale({ portion_g: 180 }, per100, 180);
-          assert(scaled.kcal === 360, "180g -> kcal=360");
-          assert(scaled.protein_g === 18, "180g -> protein=18");
-          assert(scaled.vitamin_c_mg === 5.4, "180g -> vitC=5.4");
-          const nan = rescale({ portion_g: NaN }, per100, NaN);
-          assert(nan.kcal === 0, "NaN portion -> 0 (sicher)");
-          if (failures === 0) { console.log("\n✓ Frontend-Logiktests bestanden"); process.exit(0); }
-          else { console.error(`\n✗ ${failures} fehlgeschlagen`); process.exit(1); }
-          TESTEOF
-          node src/lib.test.mjs
-          rm -f src/lib.test.mjs
+          node --experimental-strip-types -e '
+          import("./src/types.ts").then((m) => {
+            let failures = 0;
+            function assert(c, x) { if (!c) { console.error("FAIL:", x); failures++; } else console.log("ok:", x); }
+            const per100 = { kcal: 200, protein_g: 10, fat_g: 5, carbs_g: 30, fiber_g: 2, sodium_mg: 50, calcium_mg: 20, magnesium_mg: 15, vitamin_c_mg: 3 };
+            const scaled = m.rescaleItem({ portion_g: 180, per100 });
+            assert(scaled.kcal === 360, "180g -> kcal=360");
+            assert(scaled.protein_g === 18, "180g -> protein=18");
+            assert(scaled.vitamin_c_mg === 5.4, "180g -> vitC=5.4");
+            const nan = m.rescaleItem({ portion_g: NaN, per100 });
+            assert(nan.kcal === 0, "NaN portion -> 0 (sicher)");
+            const neg = m.rescaleItem({ portion_g: -50, per100 });
+            assert(neg.kcal === 0, "negativ portion -> 0 (clamp)");
+            if (failures === 0) { console.log("\n✓ Frontend-Logiktests bestanden"); process.exit(0); }
+            else { console.error(`\n✗ ${failures} fehlgeschlagen`); process.exit(1); }
+          });
+          '

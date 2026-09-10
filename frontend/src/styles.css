@@ -481,3 +481,31 @@ select {
   border-radius: 8px;
   min-height: 40px;
 }
+
+/* --- Hilfsklassen (ersetzen Inline-Styles für Dark-Mode-Konsistenz) --- */
+.header-controls { display: flex; align-items: center; gap: 8px; }
+.banner-offline {
+  background: var(--warn-bg, #fff3e0);
+  border-color: var(--warn-border, #ffcc80);
+  color: var(--warn-text, #8a6d00);
+}
+.banner-sync {
+  background: var(--ok-bg, #e6f0ec);
+  color: var(--ok-text, #0b3d2e);
+  border-color: var(--ok-border, #2e8b57);
+}
+.login-emoji { font-size: 48px; }
+.login-hint { color: var(--danger); }
+.btn-skip { margin-top: 4px; font-size: 14px; }
+.add-row { display: flex; gap: 8px; margin-top: 8px; }
+.nutrient-source { font-size: 11px; }
+.meal-header { display: flex; justify-content: space-between; align-items: center; }
+.meal-items { margin: 8px 0; }
+.meal-item-line { font-size: 14px; }
+.beer-flag { color: var(--beer); font-size: 14px; }
+.history-title { color: var(--muted); margin-bottom: 8px; }
+.empty-card { text-align: center; color: var(--muted); }
+.history-right { text-align: right; }
+.history-actions { margin-top: 6px; }
+.btn-remove-sm { padding: 4px 8px; font-size: 12px; }
+.btn-remove-item { padding: 8px 12px; min-height: 44px; }

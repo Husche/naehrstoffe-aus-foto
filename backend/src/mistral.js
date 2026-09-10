@@ -2,8 +2,8 @@ import { config } from "./config.js";
 
 const FOOD_PROMPT = `Identifiziere alle Lebensmittel auf diesem Teller.
 Für jedes Lebensmittel: Name (auf Deutsch), geschätzte Portionsgröße in Gramm (verwende Standardteller-Referenz, Tellerdurchmesser ~25 cm) und eine grobe Kategorie.
-Antworte AUSSCHLIESSLICH als JSON-Array im folgenden Format, kein Markdown, keine Erklärungen:
-[{"name":"Reis","portion_g":180,"category":"Getreide"}]
+Antworte AUSSCHLIESSLICH als JSON-Objekt im folgenden Format, kein Markdown, keine Erklärungen:
+{"items":[{"name":"Reis","portion_g":180,"category":"Getreide"}]}
 Gib "Bier" als Namen aus, wenn Bier erkennbar ist.`;
 
 export async function detectFood(imageBase64, mimeType = "image/jpeg") {
