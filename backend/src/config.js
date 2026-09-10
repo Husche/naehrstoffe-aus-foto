@@ -29,14 +29,6 @@ export const config = {
   },
 };
 
-export function requireEnv(name) {
-  const v = process.env[name];
-  if (!v) {
-    throw new Error(`Fehlende Umgebungsvariable: ${name}`);
-  }
-  return v;
-}
-
 // Warnung bei CORS=* (nur Dev): Backend hat keine eigene Authentifizierung.
 // WebAuthn/FaceID schützt ausschließlich den Frontend-Login; die REST-API
 // (/api/meals etc.) ist ohne Reverse-Proxy/Auth für jeden erreichbar, der die

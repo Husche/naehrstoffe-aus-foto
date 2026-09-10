@@ -95,14 +95,13 @@ export async function fetchNutrients(foodName) {
   )}&search_simple=1&action=process&json=1&page_size=10&fields=product_name,code,nutriments`;
 
   let product = null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
     const res = await fetch(url, {
       headers: { "User-Agent": "NaehrstoffFoto/1.0 (self-hosted)" },
       signal: controller.signal,
     });
-    clearTimeout(timeout);
     if (res.ok) {
       const data = await res.json();
       const products = data.products || [];
@@ -110,6 +109,8 @@ export async function fetchNutrients(foodName) {
     }
   } catch (e) {
     console.warn("OFF Fetch Fehler:", e.message);
+  } finally {
+    clearTimeout(timeout);
   }
 
   const result = extractNutrients(product);

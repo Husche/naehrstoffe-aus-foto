@@ -8,6 +8,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { NUTRIENT_COLUMNS } from "./nutrition.js";
 
 const DATA_DIR = path.resolve(process.cwd(), "data");
 const DB_FILE = path.join(DATA_DIR, "meals.json");
@@ -41,8 +42,18 @@ async function writeDb(db) {
   await fs.rename(tmp, DB_FILE);
 }
 
+// Begrenzt einen numerischen Nährwert auf [0, grooving], defensiv gegen
+// manipulierte/fehlerhafte Eingaben. Negative Werte werden auf 0 gesetzt.
+function clampNum(v, max = 1e6) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(max, n);
+}
+
 // Bereinigt ein eingehendes Meal-Objekt (Server-seitige Validierung).
-// Verhindert, dass beliebige Felder/Größen die Persistenz verunreinigen.
+// Übernimmt die bekannten Nährstoff-Felder (NUTRIENT_COLUMNS) als numerisch
+// geclampte Werte und verwirft unbekannte Felder. Verhindert sowohl
+// Datenverlust der Nährwerte als auch das Verunreinigen der Persistenz.
 function sanitizeMeal(meal) {
   const meal_id = String(meal?.meal_id || "").slice(0, 100);
   const timestamp = String(meal?.timestamp || new Date().toISOString()).slice(0, 40);
@@ -52,13 +63,28 @@ function sanitizeMeal(meal) {
     ? meal.sanity_issues.slice(0, 50).map((s) => String(s).slice(0, 300))
     : [];
   const rawItems = Array.isArray(meal?.items) ? meal.items.slice(0, 100) : [];
-  const items = rawItems.map((it) => ({
-    name: String(it?.name || "").slice(0, MAX_ITEM_NAME),
-    category: String(it?.category || "Sonstiges").slice(0, 50),
-    portion_g: Math.max(0, Math.min(2500, Number(it?.portion_g) || 0)),
-    is_beer: !!it?.is_beer,
-    source: String(it?.source || "").slice(0, 100),
-  }));
+  const items = rawItems.map((it) => {
+    const item = {
+      name: String(it?.name || "").slice(0, MAX_ITEM_NAME),
+      category: String(it?.category || "Sonstiges").slice(0, 50),
+      portion_g: Math.max(0, Math.min(2500, Number(it?.portion_g) || 0)),
+      is_beer: !!it?.is_beer,
+      source: String(it?.source || "").slice(0, 100),
+    };
+    // Alle bekannten Nährstoff-Felder numerisch übernehmen (Clamp auf >= 0),
+    // damit die Multi-Gerät-Sync und der CSV-Export die Werte nicht verlieren.
+    for (const col of NUTRIENT_COLUMNS) {
+      item[col] = clampNum(it?.[col]);
+    }
+    // per100-Referenz (für clientseitiges Rescaling) sanitized übernehmen.
+    if (it?.per100 && typeof it.per100 === "object") {
+      const per100 = {};
+      for (const col of NUTRIENT_COLUMNS) per100[col] = clampNum(it.per100[col]);
+      per100.source = String(it.per100.source || "").slice(0, 100);
+      item.per100 = per100;
+    }
+    return item;
+  });
   return { meal_id, timestamp, items, beer_flag, synced, sanity_issues };
 }
 

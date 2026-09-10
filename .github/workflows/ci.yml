@@ -98,6 +98,25 @@ jobs:
           await store.storeDeleteMeal("m1");
           assert((await store.storeGetMeals()).length === 0, "Store: Delete ok");
 
+          // Integrationstest: Vollständiges Meal mit Nährwerten speichern, laden
+          // und via buildCsv verifizieren, dass die Nährstoff-Felder erhalten
+          // bleiben (Regressionsschutz für sanitizeMeal-Nährwertverlust).
+          await store.storeUpsertMeal({
+            meal_id: "nutri1", timestamp: "2024-01-01T12:00:00Z", beer_flag: true, synced: false, sanity_issues: [],
+            items: [{ name: "Reis", category: "Getreide", portion_g: 180, is_beer: false, source: "OFF",
+              kcal: 234, protein_g: 5, fat_g: 0.5, carbs_g: 50, fiber_g: 1.8, trans_fat_g: 0.2, cholesterol_mg: 0, sodium_mg: 1, calcium_mg: 10 }]
+          });
+          const loaded = await store.storeGetMeal("nutri1");
+          assert(loaded.items[0].kcal === 234, "Integration: kcal erhalten nach Store-Roundtrip");
+          assert(loaded.items[0].protein_g === 5, "Integration: protein_g erhalten");
+          assert(loaded.items[0].carbs_g === 50, "Integration: carbs_g erhalten");
+          assert(loaded.items[0].calcium_mg === 10, "Integration: Mikronährstoff (calcium) erhalten");
+          const csvNutri = buildCsv(loaded);
+          const nutriRow = csvNutri.trim().split("\n")[1];
+          assert(nutriRow.includes("234") && nutriRow.includes("Reis,180,"), "Integration: CSV enthält gespeicherte Nährwerte");
+          assert(!nutriRow.includes("undefined"), "Integration: kein 'undefined' in CSV");
+          await store.storeDeleteMeal("nutri1");
+
           if (failures === 0) { console.log("\n✓ Alle Backend-Tests bestanden"); process.exit(0); }
           else { console.error(`\n✗ ${failures} fehlgeschlagen`); process.exit(1); }
           TESTEOF

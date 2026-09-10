@@ -19,13 +19,14 @@ import {
 } from "./store.js";
 
 const app = express();
-app.use(
-  cors(
-    // Leerer Origin-String -> gleicher Origin (Backend serviert Frontend selbst).
-    // CORS_ORIGIN=* nur explizit für Dev setzen (siehe config.js).
-    config.corsOrigin ? { origin: config.corsOrigin } : undefined
-  )
-);
+// CORS: Default (leerer corsOrigin) bedeutet same-origin (Backend serviert das
+// Frontend selbst) -> CORS bewusst NICHT aktivieren, damit cors() nicht per Default
+// jeden Origin reflektiert (cors(undefined) == cors default == allow-all, was die
+// REST-API ohne Auth jedem Origin öffnen würde). CORS_ORIGIN nur für getrennte
+// Dev-Server (z. B. http://localhost:5173) setzen.
+if (config.corsOrigin) {
+  app.use(cors({ origin: config.corsOrigin }));
+}
 app.use(express.json({ limit: "25mb" }));
 
 const upload = multer({

@@ -91,13 +91,18 @@ export default function App() {
   const [theme, setTheme] = useState(() => (localStorage.getItem("naehrstoff_theme") as string) || "auto");
   // Ref für den Undo-Timer, damit er beim Unmount/re-Trigger sicher gelöscht wird.
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Ref für das Drive-OAuth-Polling-Interval (Cleanup bei Unmount/Re-Trigger).
+  const drivePoll = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
 
   // Undo-Timer beim Unmount sicher löschen (kein setState auf ungemounteter Komponente).
-  useEffect(() => () => { if (undoTimer.current) clearTimeout(undoTimer.current); }, []);
+  useEffect(() => () => {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    if (drivePoll.current) clearInterval(drivePoll.current);
+  }, []);
 
   useEffect(() => {
     getHealth().then((h) => setHealth({ mistral: h.mistral, drive: h.drive })).catch(() => setHealth({ mistral: false, drive: false }));
@@ -278,18 +283,22 @@ export default function App() {
     try {
       const url = await getDriveAuthUrl();
       window.open(url, "_blank");
+      // Vorheriges Polling abbrechen (Doppelklick-sicher), dann neu starten.
+      if (drivePoll.current) clearInterval(drivePoll.current);
       // Statt fester 3s: pollen, bis Drive verbunden (max ~2 Min). Der OAuth-Flow
       // erfordert manuelle Consent im neuen Tab, 3s sind fast immer zu kurz.
       let attempts = 0;
-      const poll = setInterval(() => {
+      drivePoll.current = setInterval(() => {
         attempts++;
         getDriveStatus().then((c) => {
           if (c) {
             setDriveConnected(true);
-            clearInterval(poll);
+            if (drivePoll.current) { clearInterval(drivePoll.current); drivePoll.current = null; }
           }
         }).catch(() => {});
-        if (attempts > 40) clearInterval(poll); // ~2 Min, dann übernimmt das 30s-Polling
+        if (attempts > 40) { // ~2 Min, dann übernimmt das 30s-Polling
+          if (drivePoll.current) { clearInterval(drivePoll.current); drivePoll.current = null; }
+        }
       }, 3000);
     } catch (e: any) {
       setError(e.message || "Google Drive konnte nicht verbunden werden.");
