@@ -8,7 +8,6 @@ services:
       - "8787:8787"
     env_file:
       - .env
-    # Google OAuth Callback muss von außen erreichbar sein (z.B. via Reverse Proxy mit HTTPS).
     environment:
       - CORS_ORIGIN=${CORS_ORIGIN:-*}
     volumes:

@@ -16,7 +16,9 @@ import {
   storeGetMeals,
   storeUpsertMeal,
   storeDeleteMeal,
+  initStore,
 } from "./store.js";
+import { dbConfigured, dbReady } from "./db.js";
 
 const app = express();
 // CORS: Default (leerer corsOrigin) bedeutet same-origin (Backend serviert das
@@ -42,6 +44,7 @@ app.get("/api/health", (req, res) => {
     ok: true,
     mistral: !!config.mistral.apiKey,
     drive: isConnected(),
+    timescale: dbReady(),
     model: config.mistral.model,
   });
 });
@@ -194,8 +197,16 @@ app.get("*", (req, res, next) => {
   });
 });
 
+// TimescaleDB vor dem Listen-Hochlauf initialisieren, damit /api/health und
+// /api/meals erst bedient werden, wenn der DB-Status feststeht (bzw. der
+// Fallback aktiv ist). initStore fängt Fehler intern ab und blockiert nicht.
+await initStore();
+
 app.listen(config.port, () => {
   console.log(`Nährstoff-Backend läuft auf :${config.port}`);
   console.log(`Mistral: ${config.mistral.apiKey ? "konfiguriert" : "FEHLT"}`);
   console.log(`Drive: ${isConnected() ? "verbunden" : "nicht verbunden"}`);
+  console.log(
+    `TimescaleDB: ${dbReady() ? "verbunden" : dbConfigured() ? "konfiguriert, nicht verbunden" : "nicht konfiguriert"}`
+  );
 });

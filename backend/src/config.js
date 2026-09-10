@@ -15,6 +15,20 @@ export const config = {
   nutrition: {
     baseUrl: process.env.NUTRITION_API || "https://world.openfoodfacts.org",
   },
+  // TimescaleDB / PostgreSQL (Gesundheitsdaten-DB). Optional: wenn
+  // DATABASE_URL (oder PGHOST/...) gesetzt ist, werden Nährwertdaten zustätzlich
+  // zur JSON-Datei in die Datenbank geschrieben. Ohne Konfiguration fällt das
+  // Backend auf die Datei-basierte Persistenz (data/meals.json) zurück.
+  timescale: {
+    url: process.env.DATABASE_URL || "",
+    schema: process.env.DB_SCHEMA || "public",
+    // Einzelschritte (nur relevant, wenn keine DATABASE_URL gesetzt ist).
+    host: process.env.PGHOST || "",
+    port: parseInt(process.env.PGPORT || "5432", 10),
+    database: process.env.PGDATABASE || "",
+    user: process.env.PGUSER || "",
+    password: process.env.PGPASSWORD || "",
+  },
   drive: {
     clientId: process.env.GOOGLE_CLIENT_ID || "",
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
