@@ -15,10 +15,12 @@ cd naehrstoffe-aus-foto
 
 ## 2. `.env` anlegen
 ```bash
-cp .env.example .env
+cp .env.template .env   # ausfuehrliche Vorlage mit Quellen-Hinweisen je Variable
 # Werte eintragen, besonders MISTRAL_API_KEY und Google Drive Credentials
 nano .env
 ```
+Die `.env.template` enthaelt Kommentare, woher jeder Wert kommt
+(Mistral Console, Google Cloud Console, DB-Setup, eigene Domain).
 Wichtig für externe Erreichbarkeit:
 ```
 GOOGLE_REDIRECT_URI=https://naehrstoff.deine-domain.de/oauth/google/callback
