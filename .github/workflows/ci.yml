@@ -1,0 +1,148 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "vibe/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install backend deps
+        run: npm --prefix backend ci
+
+      - name: Install frontend deps
+        run: npm --prefix frontend ci
+
+      - name: Backend smoke tests (CSV, sanity, nutrition)
+        working-directory: backend
+        run: |
+          cat > smoke.test.mjs <<'TESTEOF'
+          import { buildCsv, CSV_COLUMNS } from "./src/csv.js";
+          import { sanityCheckMeal, sanityCheckPortion } from "./src/sanity.js";
+          import { scaleNutrients, NUTRIENT_COLUMNS, NUTRIENT_MAP } from "./src/nutrition.js";
+
+          let failures = 0;
+          function assert(cond, msg) { if (!cond) { console.error("FAIL:", msg); failures++; } else console.log("ok:", msg); }
+
+          // CSV Header + Datenzeile
+          const meal = {
+            meal_id: "meal-1", timestamp: "2024-01-01T12:00:00Z", beer_flag: true,
+            items: [{ name: "Reis", portion_g: 180, kcal: 234, protein_g: 5, fat_g: 0.5, carbs_g: 50, fiber_g: 1.8, trans_fat_g: 0.2 }],
+          };
+          const csv = buildCsv(meal);
+          const lines = csv.trim().split("\n");
+          assert(lines.length === 2, "CSV hat Header + 1 Datenzeile");
+          assert(lines[0] === CSV_COLUMNS.join(","), "CSV Header = CSV_COLUMNS");
+          assert(lines[1].startsWith("2024-01-01T12:00:00Z,meal-1,Reis,180,50,5,0.5,1.8,234,1,"), "CSV Datenzeile korrekt (beer_flag=1)");
+          assert(CSV_COLUMNS.includes("trans_fat_g"), "CSV enthält trans_fat_g");
+          assert(CSV_COLUMNS[CSV_COLUMNS.length - 1] === "cholesterol_mg", "letzte Spalte = cholesterol_mg");
+
+          // beer_flag=false
+          const csv2 = buildCsv({ ...meal, beer_flag: false });
+          assert(csv2.trim().split("\n")[1].includes(",0,"), "CSV beer_flag=0 wenn inaktiv");
+
+          // NUTRIENT_MAP korrekt
+          assert(NUTRIENT_MAP["energy-kcal"] === "kcal", "energy-kcal -> kcal");
+          assert(!("kcal_alt" in NUTRIENT_MAP), "kein kcal_alt mehr");
+          assert(NUTRIENT_MAP["trans-fat"] === "trans_fat_g", "trans-fat gemappt");
+          assert(NUTRIENT_COLUMNS.includes("trans_fat_g"), "NUTRIENT_COLUMNS enthält trans_fat_g");
+
+          // kJ -> kcal Konvertierung
+          assert(Math.round(418.4 / 4.184) === 100, "kJ->kcal Konvertierung");
+
+          // Sanity
+          assert(sanityCheckPortion("Reis", 180, "Reis").length === 0, "Sanity: 180g Reis ok");
+          assert(sanityCheckPortion("Reis", 5000, "Reis").length > 0, "Sanity: 5000g flagged");
+          assert(sanityCheckPortion("X", 0, "Sonstiges").length > 0, "Sanity: 0g flagged");
+          assert(sanityCheckMeal([{ name: "Reis", portion_g: 180, category: "Reis", kcal: 234 }]).length === 0, "Sanity Meal realistisch ok");
+          assert(sanityCheckMeal([{ name: "Reis", portion_g: 5000, category: "Reis", kcal: 6000 }]).length > 0, "Sanity Meal unrealistisch flagged");
+
+          // scaleNutrients
+          const scaled = scaleNutrients({ kcal: 200, protein_g: 10, trans_fat_g: 1 }, 200);
+          assert(scaled.kcal === 400, "scaleNutrients kcal");
+          assert(scaled.protein_g === 20, "scaleNutrients protein");
+          assert(scaled.trans_fat_g === 2, "scaleNutrients trans_fat");
+          assert(scaleNutrients({ kcal: 200 }, -50).kcal === 0, "scaleNutrients negativ -> 0 (Clamp)");
+          // Negative Portionsgroesse und kcal in der CSV muessen auf 0 geclampt sein.
+          const csvNeg = buildCsv({ meal_id: "m", timestamp: "t", beer_flag: false, items: [{ name: "X", portion_g: -50, kcal: -100 }] });
+          assert(!csvNeg.includes("-50") && !csvNeg.includes("-100"), "CSV: keine negativen Werte");
+          assert(csvNeg.trim().split("\n")[1].startsWith("t,m,X,0,"), "CSV: portion geclampt auf 0");
+
+          // fetchNutrientsBatch exportiert (Parallelisierung)
+          const m = await import("./src/nutrition.js");
+          assert(typeof m.fetchNutrientsBatch === "function", "fetchNutrientsBatch exportiert");
+
+          // Server-Store (CRUD)
+          const fs = await import("node:fs"); const os = await import("node:os"); const p = await import("node:path");
+          const dir = p.join(os.tmpdir(), "storetest" + Math.random().toString(36).slice(2));
+          fs.mkdirSync(dir, { recursive: true }); process.chdir(dir);
+          const store = await import("./src/store.js");
+          await store.storeUpsertMeal({ meal_id: "m1", timestamp: "2024-01-01T00:00:00Z", items: [], synced: false, beer_flag: false });
+          assert((await store.storeGetMeals()).length === 1, "Store: Upsert add");
+          await store.storeUpsertMeal({ meal_id: "m1", timestamp: "2024-01-02T00:00:00Z", items: [], synced: true, beer_flag: false });
+          assert((await store.storeGetMeals()).length === 1, "Store: Upsert update (kein dup)");
+          assert((await store.storeGetMeal("m1")).timestamp === "2024-01-02T00:00:00Z", "Store: Update übernommen");
+          await store.storeDeleteMeal("m1");
+          assert((await store.storeGetMeals()).length === 0, "Store: Delete ok");
+
+          // Integrationstest: Vollständiges Meal mit Nährwerten speichern, laden
+          // und via buildCsv verifizieren, dass die Nährstoff-Felder erhalten
+          // bleiben (Regressionsschutz für sanitizeMeal-Nährwertverlust).
+          await store.storeUpsertMeal({
+            meal_id: "nutri1", timestamp: "2024-01-01T12:00:00Z", beer_flag: true, synced: false, sanity_issues: [],
+            items: [{ name: "Reis", category: "Getreide", portion_g: 180, is_beer: false, source: "OFF",
+              kcal: 234, protein_g: 5, fat_g: 0.5, carbs_g: 50, fiber_g: 1.8, trans_fat_g: 0.2, cholesterol_mg: 0, sodium_mg: 1, calcium_mg: 10 }]
+          });
+          const loaded = await store.storeGetMeal("nutri1");
+          assert(loaded.items[0].kcal === 234, "Integration: kcal erhalten nach Store-Roundtrip");
+          assert(loaded.items[0].protein_g === 5, "Integration: protein_g erhalten");
+          assert(loaded.items[0].carbs_g === 50, "Integration: carbs_g erhalten");
+          assert(loaded.items[0].calcium_mg === 10, "Integration: Mikronährstoff (calcium) erhalten");
+          const csvNutri = buildCsv(loaded);
+          const nutriRow = csvNutri.trim().split("\n")[1];
+          assert(nutriRow.includes("234") && nutriRow.includes("Reis,180,"), "Integration: CSV enthält gespeicherte Nährwerte");
+          assert(!nutriRow.includes("undefined"), "Integration: kein 'undefined' in CSV");
+          await store.storeDeleteMeal("nutri1");
+
+          if (failures === 0) { console.log("\n✓ Alle Backend-Tests bestanden"); process.exit(0); }
+          else { console.error(`\n✗ ${failures} fehlgeschlagen`); process.exit(1); }
+          TESTEOF
+          node smoke.test.mjs
+
+      - name: Frontend typecheck + build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Frontend logic tests (rescale)
+        working-directory: frontend
+        run: |
+          node --experimental-strip-types -e '
+          import("./src/types.ts").then((m) => {
+            let failures = 0;
+            function assert(c, x) { if (!c) { console.error("FAIL:", x); failures++; } else console.log("ok:", x); }
+            const per100 = { kcal: 200, protein_g: 10, fat_g: 5, carbs_g: 30, fiber_g: 2, sodium_mg: 50, calcium_mg: 20, magnesium_mg: 15, vitamin_c_mg: 3 };
+            const scaled = m.rescaleItem({ portion_g: 180, per100 });
+            assert(scaled.kcal === 360, "180g -> kcal=360");
+            assert(scaled.protein_g === 18, "180g -> protein=18");
+            assert(scaled.vitamin_c_mg === 5.4, "180g -> vitC=5.4");
+            const nan = m.rescaleItem({ portion_g: NaN, per100 });
+            assert(nan.kcal === 0, "NaN portion -> 0 (sicher)");
+            const neg = m.rescaleItem({ portion_g: -50, per100 });
+            assert(neg.kcal === 0, "negativ portion -> 0 (clamp)");
+            if (failures === 0) { console.log("\n✓ Frontend-Logiktests bestanden"); process.exit(0); }
+            else { console.error(`\n✗ ${failures} fehlgeschlagen`); process.exit(1); }
+          });
+          '

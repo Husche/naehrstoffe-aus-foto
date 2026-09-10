@@ -1,0 +1,20 @@
+version: "3.9"
+services:
+  naehrstoff:
+    build: .
+    container_name: naehrstoff-foto
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    env_file:
+      - .env
+    # Google OAuth Callback muss von außen erreichbar sein (z.B. via Reverse Proxy mit HTTPS).
+    environment:
+      - CORS_ORIGIN=${CORS_ORIGIN:-*}
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8787/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

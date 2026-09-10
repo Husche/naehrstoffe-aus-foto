@@ -1,0 +1,15 @@
+{
+  "name": "naehrstoffe-aus-foto",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Nährstoffschätzung aus Mahlzeiten-Fotos mit Mistral Large Vision + Open Food Facts",
+  "scripts": {
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "dev": "concurrently -n backend,frontend -c blue,green \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
+    "build": "npm --prefix backend run build && npm --prefix frontend run build",
+    "start": "npm --prefix backend start"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
