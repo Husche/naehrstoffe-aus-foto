@@ -14,6 +14,9 @@ import {
   getDriveStatus,
   getHealth,
   uploadToDrive,
+  getServerMeals,
+  saveServerMeal,
+  deleteServerMeal,
 } from "./api.ts";
 import {
   getAllMeals,
@@ -29,6 +32,18 @@ type View = "capture" | "today" | "history";
 
 function genId() {
   return `meal-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function applyTheme(theme: string) {
+  const root = document.documentElement;
+  const dark = theme === "dark" || (theme === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  root.setAttribute("data-theme", dark ? "dark" : "light");
+}
+
+function cycleTheme(t: string): string {
+  if (t === "auto") return "light";
+  if (t === "light") return "dark";
+  return "auto";
 }
 
 function sumKey(items: FoodItem[], key: keyof FoodItem): number {
@@ -72,6 +87,12 @@ export default function App() {
   const [webauthnOk, setWebauthnOk] = useState(false);
   const [faceId, setFaceId] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
+  const [undo, setUndo] = useState<{ meal: Meal } | null>(null);
+  const [theme, setTheme] = useState(() => (localStorage.getItem("naehrstoff_theme") as string) || "auto");
+
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
 
   useEffect(() => {
     getHealth().then((h) => setHealth({ mistral: h.mistral, drive: h.drive })).catch(() => setHealth({ mistral: false, drive: false }));
@@ -106,9 +127,27 @@ export default function App() {
   }, [driveConnected]);
 
   async function refreshMeals() {
-    const all = await getAllMeals();
-    all.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-    setMeals(all);
+    const local = await getAllMeals();
+    let merged = local;
+    // Server-Mahlzeiten mergen (Multi-Gerät), wenn online.
+    if (navigator.onLine) {
+      try {
+        const server = await getServerMeals();
+        const byId = new Map(local.map((m) => [m.meal_id, m]));
+        for (const sm of server) {
+          const lm = byId.get(sm.meal_id);
+          // Server gewinnt, wenn neuer oder lokal noch nicht vorhanden.
+          if (!lm || (sm.timestamp || "") > (lm.timestamp || "")) {
+            byId.set(sm.meal_id, sm);
+          }
+        }
+        merged = [...byId.values()];
+      } catch {
+        /* offline/Server nicht erreichbar: nur lokale verwenden */
+      }
+    }
+    merged.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    setMeals(merged);
   }
 
   async function handleLogin() {
@@ -190,6 +229,10 @@ export default function App() {
     }
     try {
       await saveMeal(draft);
+      // Auch serverseitig persistieren (Multi-Gerät), wenn online.
+      if (navigator.onLine) {
+        saveServerMeal(draft).catch((e) => console.warn("Server-Save fehlgeschlagen:", e));
+      }
       setSyncMsg("Mahlzeit lokal gespeichert." + (navigator.onLine ? "" : " Wird synchronisiert, wenn online."));
       setDraft(null);
       setPreview(null);
@@ -259,10 +302,33 @@ export default function App() {
 
   async function removeMeal(id: string) {
     try {
+      const meals = await getAllMeals();
+      const meal = meals.find((m) => m.meal_id === id);
       await deleteMeal(id);
+      if (navigator.onLine) {
+        deleteServerMeal(id).catch((e) => console.warn("Server-Delete fehlgeschlagen:", e));
+      }
       refreshMeals();
+      if (meal) {
+        setUndo({ meal });
+        setTimeout(() => setUndo(null), 6000);
+      }
     } catch (e: any) {
       setError(e.message || "Löschen fehlgeschlagen.");
+    }
+  }
+
+  async function undoDelete() {
+    if (!undo) return;
+    try {
+      await saveMeal(undo.meal);
+      if (navigator.onLine) {
+        saveServerMeal(undo.meal).catch((e) => console.warn("Server-Undo fehlgeschlagen:", e));
+      }
+      setUndo(null);
+      refreshMeals();
+    } catch (e: any) {
+      setError(e.message || "Wiederherstellen fehlgeschlagen.");
     }
   }
 
@@ -314,11 +380,24 @@ export default function App() {
     <div>
       <header className="app-header">
         <h1>🍽️ Nährstoffe aus Foto</h1>
-        <nav className="nav">
-          <button className={view === "capture" ? "active" : ""} onClick={() => setView("capture")}>Foto</button>
-          <button className={view === "today" ? "active" : ""} onClick={() => setView("today")}>Heute</button>
-          <button className={view === "history" ? "active" : ""} onClick={() => setView("history")}>Historie</button>
-        </nav>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            className="theme-toggle"
+            aria-label={`Design: ${theme}`}
+            onClick={() => {
+              const next = cycleTheme(theme);
+              setTheme(next);
+              localStorage.setItem("naehrstoff_theme", next);
+            }}
+          >
+            {theme === "auto" ? "🌙" : theme === "light" ? "☀️" : "🌓"}
+          </button>
+          <nav className="nav">
+            <button className={view === "capture" ? "active" : ""} onClick={() => setView("capture")}>Foto</button>
+            <button className={view === "today" ? "active" : ""} onClick={() => setView("today")}>Heute</button>
+            <button className={view === "history" ? "active" : ""} onClick={() => setView("history")}>Historie</button>
+          </nav>
+        </div>
       </header>
 
       <main className="container">
@@ -336,6 +415,12 @@ export default function App() {
         {syncMsg && (
           <div className="sanity" style={{ background: "#e6f0ec", color: "#0b3d2e", borderColor: "#2e8b57" }}>
             {syncMsg}
+          </div>
+        )}
+        {undo && (
+          <div className="undo-toast">
+            <span>Mahlzeit gelöscht</span>
+            <button onClick={undoDelete}>Rückgängig</button>
           </div>
         )}
 

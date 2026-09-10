@@ -25,3 +25,7 @@ yarn-error.log*
 # Build cache
 .vite/
 .cache/
+
+# Server-side Persistenz (JSON-Daten)
+data/
+data/**

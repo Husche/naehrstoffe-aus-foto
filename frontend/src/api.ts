@@ -66,3 +66,27 @@ export async function getHealth(): Promise<{
   const res = await fetch(`${API}/api/health`);
   return jsonOrThrow(res);
 }
+
+// --- Serverseitige Mahlzeiten-Persistenz (Multi-Gerät-Sync) ---
+
+export async function getServerMeals(): Promise<Meal[]> {
+  const res = await fetch(`${API}/api/meals`);
+  const data = await jsonOrThrow(res);
+  return data.meals || [];
+}
+
+export async function saveServerMeal(meal: Meal): Promise<{ ok: boolean }> {
+  const res = await fetch(`${API}/api/meals`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(meal),
+  });
+  return jsonOrThrow(res);
+}
+
+export async function deleteServerMeal(meal_id: string): Promise<{ ok: boolean }> {
+  const res = await fetch(`${API}/api/meals/${encodeURIComponent(meal_id)}`, {
+    method: "DELETE",
+  });
+  return jsonOrThrow(res);
+}

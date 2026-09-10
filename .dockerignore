@@ -7,3 +7,6 @@ build
 *.log
 .vite
 .cache
+
+data
+data/**

@@ -12,6 +12,11 @@ import {
   uploadCsvToDrive,
   isConnected,
 } from "./drive.js";
+import {
+  storeGetMeals,
+  storeUpsertMeal,
+  storeDeleteMeal,
+} from "./store.js";
 
 const app = express();
 app.use(cors({ origin: config.corsOrigin }));
@@ -89,6 +94,39 @@ app.post("/api/csv", (req, res) => {
       `attachment; filename="naehrstoffe_${meal.meal_id || "export"}.csv"`
     );
     res.send(csv);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- Serverseitige Mahlzeiten-Persistenz (Multi-Gerät-Sync) ---
+app.get("/api/meals", async (req, res) => {
+  try {
+    const meals = await storeGetMeals();
+    meals.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    res.json({ meals });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/meals", async (req, res) => {
+  try {
+    const meal = req.body;
+    if (!meal || !meal.meal_id || !Array.isArray(meal.items)) {
+      return res.status(400).json({ error: "Ungültige Mahlzeit." });
+    }
+    await storeUpsertMeal(meal);
+    res.json({ ok: true, meal_id: meal.meal_id });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/meals/:meal_id", async (req, res) => {
+  try {
+    await storeDeleteMeal(req.params.meal_id);
+    res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

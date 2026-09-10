@@ -2,7 +2,7 @@
 // Cacht die App-Shell (HTML/JS/CSS), sodass die App offline geladen werden kann.
 // API-Anfragen werden bewusst NICHT gecacht (immer frisch vom Backend).
 
-const CACHE_NAME = "naehrstoff-v1";
+const CACHE_NAME = "naehrstoff-v__APP_VERSION__";
 const APP_SHELL = [
   "/",
   "/index.html",

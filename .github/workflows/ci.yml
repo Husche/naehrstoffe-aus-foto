@@ -80,6 +80,19 @@ jobs:
           const m = await import("./src/nutrition.js");
           assert(typeof m.fetchNutrientsBatch === "function", "fetchNutrientsBatch exportiert");
 
+          // Server-Store (CRUD)
+          const fs = await import("node:fs"); const os = await import("node:os"); const p = await import("node:path");
+          const dir = p.join(os.tmpdir(), "storetest" + Math.random().toString(36).slice(2));
+          fs.mkdirSync(dir, { recursive: true }); process.chdir(dir);
+          const store = await import("./src/store.js");
+          await store.storeUpsertMeal({ meal_id: "m1", timestamp: "2024-01-01T00:00:00Z", items: [], synced: false, beer_flag: false });
+          assert((await store.storeGetMeals()).length === 1, "Store: Upsert add");
+          await store.storeUpsertMeal({ meal_id: "m1", timestamp: "2024-01-02T00:00:00Z", items: [], synced: true, beer_flag: false });
+          assert((await store.storeGetMeals()).length === 1, "Store: Upsert update (kein dup)");
+          assert((await store.storeGetMeal("m1")).timestamp === "2024-01-02T00:00:00Z", "Store: Update übernommen");
+          await store.storeDeleteMeal("m1");
+          assert((await store.storeGetMeals()).length === 0, "Store: Delete ok");
+
           if (failures === 0) { console.log("\n✓ Alle Backend-Tests bestanden"); process.exit(0); }
           else { console.error(`\n✗ ${failures} fehlgeschlagen`); process.exit(1); }
           TESTEOF
