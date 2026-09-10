@@ -1,10 +1,11 @@
-// Einfache serverseitige Persistenz als JSON-Datei (für Multi-Gerät-Sync).
-// Single-User, self-hosted: Datei-basiert reicht aus, keine DB nötig.
+// Serverseitige Persistenz als JSON-Datei (für Multi-Gerät-Sync).
+// Single-User, self-hosted: Datei-basiert reicht als lokaler Cache/Backup.
+// Zusätzlich wird (sofern konfiguriert) in eine TimescaleDB geschrieben (db.js).
 // Mahlzeiten werden unter ./data/meals.json gespeichert.
 //
 // Nebenläufigkeit: readDb -> writeDb ist nicht atomar. Bei gleichzeitigem
 // Schreiben zweier Requests gewinnt der letzte. Für 2-3 Fotos/Tag des Single-Users
-// vertretbar; bei höherer Last wäre eine echte DB oder File-Locking nötig.
+// vertretbar; bei höherer Last wäre File-Locking nötig (die DB übernimmt das).
 
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -16,6 +17,7 @@ import {
   dbUpsertMeal as dbWriteMeal,
   dbDeleteMeal as dbDeleteMealDb,
   dbGetMeals as dbReadMeals,
+  dbGetMeal as dbReadMeal,
 } from "./db.js";
 
 // TimescaleDB beim Modul-Laden initialisieren (falls konfiguriert).
@@ -125,6 +127,15 @@ export async function storeGetMeals() {
 
 export async function storeGetMeal(meal_id) {
   const id = String(meal_id || "").slice(0, 100);
+  // Konsistent mit storeGetMeals: wenn die DB aktiv ist, ist sie primäre Quelle.
+  if (dbReady()) {
+    try {
+      const m = await dbReadMeal(id);
+      if (m) return m;
+    } catch (e) {
+      console.error("DB-Lesen (single) fehlgeschlagen, Fallback auf meals.json:", e.message);
+    }
+  }
   const db = await readDb();
   return (db.meals || []).find((m) => m.meal_id === id) || null;
 }

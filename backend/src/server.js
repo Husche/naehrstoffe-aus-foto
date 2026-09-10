@@ -197,6 +197,11 @@ app.get("*", (req, res, next) => {
   });
 });
 
+// TimescaleDB vor dem Listen-Hochlauf initialisieren, damit /api/health und
+// /api/meals erst bedient werden, wenn der DB-Status feststeht (bzw. der
+// Fallback aktiv ist). initStore fängt Fehler intern ab und blockiert nicht.
+await initStore();
+
 app.listen(config.port, () => {
   console.log(`Nährstoff-Backend läuft auf :${config.port}`);
   console.log(`Mistral: ${config.mistral.apiKey ? "konfiguriert" : "FEHLT"}`);
@@ -205,6 +210,3 @@ app.listen(config.port, () => {
     `TimescaleDB: ${dbReady() ? "verbunden" : dbConfigured() ? "konfiguriert, nicht verbunden" : "nicht konfiguriert"}`
   );
 });
-
-// TimescaleDB asynchron initialisieren (nicht blockierend).
-initStore();

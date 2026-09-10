@@ -13,11 +13,24 @@ import { NUTRIENT_COLUMNS } from "./nutrition.js";
 let pool = null;
 let ready = false;
 
+// PostgreSQL-Identifier dürfen nur [A-Za-z_][A-Za-z0-9_]* sein. Schema/Tabellen-
+// Namen werden als Identifier interpoliert (Parametrisierung ist für Identifier
+// nicht möglich), daher Whitelist-Validierung gegen SQL-Injection.
+const IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
 function connectionString() {
   if (config.timescale.url) return config.timescale.url;
   const { host, port, database, user, password } = config.timescale;
   if (!host || !database || !user) return "";
   return `postgresql://${user}:${encodeURIComponent(password)}@${host}:${port}/${database}`;
+}
+
+function qualifiedTable() {
+  const schema = config.timescale.schema;
+  if (!IDENT_RE.test(schema)) {
+    throw new Error(`Ungültiger DB_SCHEMA-Name: '${schema}'`);
+  }
+  return `${schema}.nutrition_log`;
 }
 
 export function dbConfigured() {
@@ -44,19 +57,30 @@ export async function dbInit() {
       console.error("TimescaleDB Pool Fehler:", err.message);
     });
   }
-  await ensureSchema();
-  ready = true;
-  return true;
+  try {
+    await ensureSchema();
+    ready = true;
+    return true;
+  } catch (e) {
+    // Bei fehlgeschlagener Schema-Init Pool sauber schließen, damit keine
+    // offene Verbindung/Konfiguration hängen bleibt. ready bleibt false,
+    // das Backend fällt auf die Datei-Persistenz zurück.
+    const p = pool;
+    pool = null;
+    ready = false;
+    if (p) await p.end().catch(() => {});
+    throw e;
+  }
 }
 
 async function ensureSchema() {
-  const schema = config.timescale.schema;
+  const table = qualifiedTable();
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     const colsSql = NUTRIENT_COLUMNS.map((c) => `${c} REAL NOT NULL DEFAULT 0`).join(", ");
     await client.query(
-      `CREATE TABLE IF NOT EXISTS ${schema}.nutrition_log (
+      `CREATE TABLE IF NOT EXISTS ${table} (
         time TIMESTAMPTZ NOT NULL,
         meal_id TEXT NOT NULL,
         item_idx INT NOT NULL,
@@ -79,7 +103,7 @@ async function ensureSchema() {
     );
     if (rows.length) {
       await client.query(
-        `SELECT create_hypertable('${schema}.nutrition_log', 'time', if_not_exists => TRUE)`
+        `SELECT create_hypertable('${table}', 'time', if_not_exists => TRUE)`
       );
     }
     await client.query("COMMIT");
@@ -129,18 +153,26 @@ function sanitizeForDb(meal) {
 
 // Schreibt eine Mahlzeit (Upsert: vorherige Zeilen derselben meal_id löschen,
 // dann neu einfügen -> idempotent bei Multi-Gerät-Sync).
+// Hinweis: Eine Mahlzeit ohne items bewirkt nur das DELETE -> sie existiert in
+// der DB dann nicht (leere Mahlzeit). Die Datei-Persistenz speichert sie
+// dagegen als leere items-Liste. Für Single-User/Best-Effort akzeptabel.
 export async function dbUpsertMeal(meal) {
   if (!dbReady()) return false;
   const clean = sanitizeForDb(meal);
   if (!clean.meal_id) throw new Error("Ungültige meal_id.");
-  const schema = config.timescale.schema;
+  const table = qualifiedTable();
+  // Timestamp robust als ISO-String normalisieren, egal ob 'Z', Offset oder
+  // naiv. new Date(validates) wirft/NaN bei Müll -> dann Serverzeit.
+  const parsed = new Date(clean.timestamp);
+  const ts = Number.isNaN(parsed.getTime())
+    ? new Date().toISOString()
+    : parsed.toISOString();
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    await client.query(`DELETE FROM ${schema}.nutrition_log WHERE meal_id = $1`, [
+    await client.query(`DELETE FROM ${table} WHERE meal_id = $1`, [
       clean.meal_id,
     ]);
-    const ts = clean.timestamp.endsWith("Z") ? clean.timestamp : clean.timestamp + "Z";
     for (let i = 0; i < clean.items.length; i++) {
       const it = clean.items[i];
       const cols = [
@@ -172,7 +204,7 @@ export async function dbUpsertMeal(meal) {
         it.per100 ? JSON.stringify(it.per100) : null,
       ];
       const placeholders = cols.map((_, idx) => `$${idx + 1}`).join(", ");
-      const insertSql = `INSERT INTO ${schema}.nutrition_log (${cols.join(", ")}) VALUES (${placeholders})`;
+      const insertSql = `INSERT INTO ${table} (${cols.join(", ")}) VALUES (${placeholders})`;
       await client.query(insertSql, values);
     }
     await client.query("COMMIT");
@@ -188,8 +220,8 @@ export async function dbUpsertMeal(meal) {
 export async function dbDeleteMeal(meal_id) {
   if (!dbReady()) return false;
   const id = String(meal_id || "").slice(0, 100);
-  const schema = config.timescale.schema;
-  await pool.query(`DELETE FROM ${schema}.nutrition_log WHERE meal_id = $1`, [id]);
+  const table = qualifiedTable();
+  await pool.query(`DELETE FROM ${table} WHERE meal_id = $1`, [id]);
   return true;
 }
 
@@ -197,10 +229,27 @@ export async function dbDeleteMeal(meal_id) {
 // Frontend erwartet (kompatibel mit storeGetMeals aus store.js).
 export async function dbGetMeals() {
   if (!dbReady()) return [];
-  const schema = config.timescale.schema;
+  const table = qualifiedTable();
   const { rows } = await pool.query(
-    `SELECT * FROM ${schema}.nutrition_log ORDER BY time DESC, meal_id, item_idx`
+    `SELECT * FROM ${table} ORDER BY time DESC, meal_id, item_idx`
   );
+  return rowsToMeals(rows);
+}
+
+// Liest eine einzelne Mahlzeit aus der DB (Rekonstruktion wie dbGetMeals).
+export async function dbGetMeal(meal_id) {
+  if (!dbReady()) return null;
+  const id = String(meal_id || "").slice(0, 100);
+  const table = qualifiedTable();
+  const { rows } = await pool.query(
+    `SELECT * FROM ${table} WHERE meal_id = $1 ORDER BY item_idx`,
+    [id]
+  );
+  const meals = rowsToMeals(rows);
+  return meals.length ? meals[0] : null;
+}
+
+function rowsToMeals(rows) {
   const byMeal = new Map();
   for (const r of rows) {
     if (!byMeal.has(r.meal_id)) {
