@@ -76,7 +76,10 @@ jobs:
           assert(scaled.protein_g === 20, "scaleNutrients protein");
           assert(scaled.trans_fat_g === 2, "scaleNutrients trans_fat");
           assert(scaleNutrients({ kcal: 200 }, -50).kcal === 0, "scaleNutrients negativ -> 0 (Clamp)");
-          assert(buildCsv({ meal_id: "m", timestamp: "t", beer_flag: false, items: [{ name: "X", portion_g: -50, kcal: -100 }] }).includes(",0,,0,"), "CSV: negative Werte geclampt");
+          // Negative Portionsgroesse und kcal in der CSV muessen auf 0 geclampt sein.
+          const csvNeg = buildCsv({ meal_id: "m", timestamp: "t", beer_flag: false, items: [{ name: "X", portion_g: -50, kcal: -100 }] });
+          assert(!csvNeg.includes("-50") && !csvNeg.includes("-100"), "CSV: keine negativen Werte");
+          assert(csvNeg.trim().split("\n")[1].startsWith("t,m,X,0,"), "CSV: portion geclampt auf 0");
 
           // fetchNutrientsBatch exportiert (Parallelisierung)
           const m = await import("./src/nutrition.js");
