@@ -9,6 +9,28 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { NUTRIENT_COLUMNS } from "./nutrition.js";
+import {
+  dbConfigured,
+  dbReady,
+  dbInit,
+  dbUpsertMeal as dbWriteMeal,
+  dbDeleteMeal as dbDeleteMealDb,
+  dbGetMeals as dbReadMeals,
+} from "./db.js";
+
+// TimescaleDB beim Modul-Laden initialisieren (falls konfiguriert).
+// Fehler beim Verbindungsaufbau werden geloggt, blockieren aber nicht den
+// Start: das Backend fällt dann auf die JSON-Datei-Persistenz zurück.
+export async function initStore() {
+  if (dbConfigured()) {
+    try {
+      const ok = await dbInit();
+      if (ok) console.log("TimescaleDB verbunden (nutrition_log).");
+    } catch (e) {
+      console.error("TimescaleDB Init fehlgeschlagen (Fallback auf meals.json):", e.message);
+    }
+  }
+}
 
 const DATA_DIR = path.resolve(process.cwd(), "data");
 const DB_FILE = path.join(DATA_DIR, "meals.json");
@@ -89,6 +111,14 @@ function sanitizeMeal(meal) {
 }
 
 export async function storeGetMeals() {
+  // Wenn die DB aktiv ist, ist sie die primäre Lesequelle (Single Source of Truth).
+  if (dbReady()) {
+    try {
+      return await dbReadMeals();
+    } catch (e) {
+      console.error("DB-Lesen fehlgeschlagen, Fallback auf meals.json:", e.message);
+    }
+  }
   const db = await readDb();
   return db.meals || [];
 }
@@ -100,24 +130,50 @@ export async function storeGetMeal(meal_id) {
 }
 
 export async function storeUpsertMeal(meal) {
-  const db = await readDb();
-  const meals = db.meals || [];
   const clean = sanitizeMeal(meal);
   if (!clean.meal_id) throw new Error("Ungültige meal_id.");
-  const idx = meals.findIndex((m) => m.meal_id === clean.meal_id);
-  if (idx >= 0) meals[idx] = clean;
-  else {
-    if (meals.length >= MAX_MEALS) meals.shift();
-    meals.push(clean);
-  }
-  await writeDb({ ...db, meals });
+  // Parallel in die JSON-Datei (lokaler Cache/Backup) und in die TimescaleDB
+  // (sofern konfiguriert). DB-Fehler werden geloggt, brechen aber den Request
+  // nicht ab, damit die App auch bei temporären DB-Ausfällen nutzbar bleibt.
+  const filePromise = (async () => {
+    const db = await readDb();
+    const meals = db.meals || [];
+    const idx = meals.findIndex((m) => m.meal_id === clean.meal_id);
+    if (idx >= 0) meals[idx] = clean;
+    else {
+      if (meals.length >= MAX_MEALS) meals.shift();
+      meals.push(clean);
+    }
+    await writeDb({ ...db, meals });
+  })();
+  const dbPromise = (async () => {
+    if (!dbReady()) return;
+    try {
+      await dbWriteMeal(clean);
+    } catch (e) {
+      console.error("DB-Schreiben fehlgeschlagen:", e.message);
+    }
+  })();
+  await Promise.all([filePromise, dbPromise]);
   return clean;
 }
 
 export async function storeDeleteMeal(meal_id) {
   const id = String(meal_id || "").slice(0, 100);
-  const db = await readDb();
-  const meals = (db.meals || []).filter((m) => m.meal_id !== id);
-  await writeDb({ ...db, meals });
+  await Promise.all([
+    (async () => {
+      const db = await readDb();
+      const meals = (db.meals || []).filter((m) => m.meal_id !== id);
+      await writeDb({ ...db, meals });
+    })(),
+    (async () => {
+      if (!dbReady()) return;
+      try {
+        await dbDeleteMealDb(id);
+      } catch (e) {
+        console.error("DB-Löschen fehlgeschlagen:", e.message);
+      }
+    })(),
+  ]);
   return true;
 }

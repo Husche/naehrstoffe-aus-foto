@@ -117,6 +117,25 @@ jobs:
           assert(!nutriRow.includes("undefined"), "Integration: kein 'undefined' in CSV");
           await store.storeDeleteMeal("nutri1");
 
+          // --- DB-Modul (TimescaleDB) ohne konfigurierte DB: No-Op/Fallback ---
+          const db = await import("./src/db.js");
+          assert(typeof db.dbConfigured === "function", "db: dbConfigured exportiert");
+          assert(typeof db.dbReady === "function", "db: dbReady exportiert");
+          assert(typeof db.dbInit === "function", "db: dbInit exportiert");
+          assert(typeof db.dbUpsertMeal === "function", "db: dbUpsertMeal exportiert");
+          assert(typeof db.dbDeleteMeal === "function", "db: dbDeleteMeal exportiert");
+          assert(typeof db.dbGetMeals === "function", "db: dbGetMeals exportiert");
+          // Ohne DB-Konfiguration (CI hat keine PG-Vars): Fallback aktiv.
+          assert(db.dbConfigured() === false, "db: nicht konfiguriert in CI");
+          assert(db.dbReady() === false, "db: nicht ready ohne Konfiguration");
+          assert((await db.dbInit()) === false, "db: dbInit No-Op ohne Konfiguration");
+          // No-Op-Verhalten: Schreiben/Löschen/Lesen werfen nicht, liefern Fallback.
+          assert((await db.dbUpsertMeal({ meal_id: "x", timestamp: "t", items: [] })) === false, "db: Upsert No-Op ohne Konfiguration");
+          assert((await db.dbDeleteMeal("x")) === false, "db: Delete No-Op ohne Konfiguration");
+          assert((await db.dbGetMeals()).length === 0, "db: GetMeals leer ohne Konfiguration");
+          // store.js muss ohne DB weiterhin über die Datei funktionieren (bereits
+          // oben getestet) und dbReady() als Fallback-Tor nutzen.
+
           if (failures === 0) { console.log("\n✓ Alle Backend-Tests bestanden"); process.exit(0); }
           else { console.error(`\n✗ ${failures} fehlgeschlagen`); process.exit(1); }
           TESTEOF

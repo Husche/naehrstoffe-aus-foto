@@ -62,3 +62,66 @@ server {
 - Im Browser `https://naehrstoff.deine-domain.de` öffnen.
 - Auf dem iPhone/Android "Zum Home-Bildschirm hinzufügen" → installiert als PWA.
 - FaceID: Beim ersten Öffnen "Gesichtserkennung einrichten" → WebAuthn registriert geräte-lokal.
+
+## 7. TimescaleDB-Anbindung (optional, parallel zu Google Drive)
+
+Die Nährwertdaten werden zustätzlich zur CSV-Datei in Google Drive in eine
+TimescaleDB / PostgreSQL geschrieben, die ebenfalls auf dem Proxmox läuft (z. B.
+im `tsdb`-Container). So lassen sich die Nährwerte direkt mit den bestehenden
+Gesundheitsdaten (Zeitreihen) korrelieren.
+
+Die beiden Container laufen nebeneinander im selben LAN
+(`192.168.178.0/24`); die Web App verbindet sich über das Netzwerk zur DB.
+
+### 7.1 DB vorbereiten (einmalig, im tsdb-Container)
+
+```bash
+# Im tsdb-Container (z. B. 192.168.178.12):
+sudo -u postgres psql
+```
+
+```sql
+CREATE USER naehrstoff WITH PASSWORD '<sicheres-passwort>';
+CREATE DATABASE health OWNER naehrstoff;
+\c health
+CREATE EXTENSION IF NOT EXISTS timescaledb;
+-- Schema anlegen (die App tut das beim Start automatisch, alternativ das
+-- beiliegende Skript deploy/timescaledb-schema.sql ausführen):
+\i deploy/timescaledb-schema.sql
+GRANT ALL ON nutrition_log TO naehrstoff;
+```
+
+`pg_hba.conf` so einstellen, dass der App-Container sich mit der DB verbinden
+darf (z. B. `host health naehrstoff 192.168.178.0/24 scram-sha-256`).
+
+### 7.2 Web App konfigurieren
+
+In der `.env` (Abschnitt "TimescaleDB") eintragen:
+
+```
+PGHOST=192.168.178.12
+PGPORT=5432
+PGDATABASE=health
+PGUSER=naehrstoff
+PGPASSWORD=<sicheres-passwort>
+```
+
+Oder als komplette URL:
+
+```
+DATABASE_URL=postgresql://naehrstoff:<passwort>@192.168.178.12:5432/health
+```
+
+Ohne diese Werte bleibt die DB-Anbindung deaktiv und das Backend fällt
+automatisch auf die Datei-basierte Persistenz (`data/meals.json`) zurück.
+
+### 7.3 Verhalten
+
+- Beim Start initialisiert das Backend die Verbindung und legt die Tabelle
+  `nutrition_log` (ggf. als Timescale-Hypertable) idempotent an.
+- `/api/health` meldet `timescale: true/false`.
+- Mahlzeiten werden parallel in die JSON-Datei (lokaler Cache/Backup) und in
+  die DB geschrieben. DB-Fehler brechen den Request nicht ab (Best-Effort).
+- Beim Lesen (`/api/meals`) ist die DB die primäre Quelle, die JSON-Datei dient
+  als Fallback.
+- Google-Drive-Upload bleibt davon unberührt (parallel).

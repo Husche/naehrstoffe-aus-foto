@@ -16,7 +16,9 @@ import {
   storeGetMeals,
   storeUpsertMeal,
   storeDeleteMeal,
+  initStore,
 } from "./store.js";
+import { dbConfigured, dbReady } from "./db.js";
 
 const app = express();
 // CORS: Default (leerer corsOrigin) bedeutet same-origin (Backend serviert das
@@ -42,6 +44,7 @@ app.get("/api/health", (req, res) => {
     ok: true,
     mistral: !!config.mistral.apiKey,
     drive: isConnected(),
+    timescale: dbReady(),
     model: config.mistral.model,
   });
 });
@@ -198,4 +201,10 @@ app.listen(config.port, () => {
   console.log(`Nährstoff-Backend läuft auf :${config.port}`);
   console.log(`Mistral: ${config.mistral.apiKey ? "konfiguriert" : "FEHLT"}`);
   console.log(`Drive: ${isConnected() ? "verbunden" : "nicht verbunden"}`);
+  console.log(
+    `TimescaleDB: ${dbReady() ? "verbunden" : dbConfigured() ? "konfiguriert, nicht verbunden" : "nicht konfiguriert"}`
+  );
 });
+
+// TimescaleDB asynchron initialisieren (nicht blockierend).
+initStore();
