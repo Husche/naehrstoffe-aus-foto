@@ -85,6 +85,37 @@ jobs:
           const m = await import("./src/nutrition.js");
           assert(typeof m.fetchNutrientsBatch === "function", "fetchNutrientsBatch exportiert");
 
+          // normalizeItem (Getränk/Bier-Erkennung, portion_ml, Default-Härtung)
+          const mistral = await import("./src/mistral.js");
+          assert(typeof mistral.normalizeItem === "function", "normalizeItem exportiert");
+          const norm = mistral.normalizeItem;
+          // is_beer True Positives (auch Komposita ohne Wortgrenze wie Dunkelbier)
+          assert(norm({ name: "Bier" }).is_beer === true, "Bier is_beer");
+          assert(norm({ name: "Dunkelbier" }).is_beer === true, "Dunkelbier is_beer (Kompositum)");
+          assert(norm({ name: "Schwarzbier" }).is_beer === true, "Schwarzbier is_beer (Kompositum)");
+          assert(norm({ name: "Pils" }).is_beer === true, "Pils is_beer");
+          assert(norm({ name: "Kölsch" }).is_beer === true, "Kölsch is_beer");
+          // is_beer False Positives (kein Bier trotz 'bier'-Substring)
+          assert(norm({ name: "Wasser" }).is_beer === false, "Wasser kein Bier");
+          assert(norm({ name: "Weizenbrot" }).is_beer === false, "Weizenbrot kein Bier");
+          assert(norm({ name: "Biersuppe" }).is_beer === false, "Biersuppe kein Bier (Food-Ausschluss)");
+          assert(norm({ name: "Bierbraten" }).is_beer === false, "Bierbraten kein Bier (Food-Ausschluss)");
+          assert(norm({ name: "Beerenauslese" }).is_beer === false, "Beerenauslese kein Bier");
+          // portion_ml -> portion_g (1 ml ~ 1 g)
+          assert(norm({ name: "Wasser", portion_ml: 250 }).portion_g === 250, "portion_ml -> portion_g");
+          // Getränke ohne Angabe -> Default 200 ml
+          assert(norm({ name: "Wasser" }).portion_g === 200, "Getränk-Default 200 ml");
+          assert(norm({ name: "Bier" }).portion_g === 200, "Bier-Default 200 ml (Getränk)");
+          // Festes ohne Angabe -> Default 100 g
+          assert(norm({ name: "Reis" }).portion_g === 100, "Fest-Default 100 g");
+          // Bierbraten darf NICHT Getränk-Default (200) -> 100 g (kein Getränk)
+          assert(norm({ name: "Bierbraten" }).portion_g === 100, "Bierbraten kein Getränk-Default");
+          // ungültige/fehlende Felder
+          assert(norm({}) === null, "leeres Objekt -> null");
+          assert(norm({ name: "" }) === null, "leerer Name -> null");
+          assert(norm({ name: "X", portion_ml: "abc" }).portion_g === 100, "invalid ml -> Fallback");
+          assert(norm({ name: "X", portion_g: -50 }).portion_g === 100, "negative portion -> Fallback");
+
           // Server-Store (CRUD)
           const fs = await import("node:fs"); const os = await import("node:os"); const p = await import("node:path");
           const dir = p.join(os.tmpdir(), "storetest" + Math.random().toString(36).slice(2));

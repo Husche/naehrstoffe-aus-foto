@@ -71,24 +71,29 @@ export async function detectFood(imageBase64, mimeType = "image/jpeg") {
   return items.map(normalizeItem).filter(Boolean);
 }
 
-const BEER_RE = /\bbier\b|\bbeer\b|\bpils\b|\bweizenbier\b|\baltbier\b|\bkölsch\b|\brauchbier\b/i;
+const BEER_RE = /bier\b|\bbeer\b|\bpils\b|weizenbier\b|altbier\b|\bkölsch\b|rauchbier\b/i;
+const BEER_FOOD_RE = /brot|bröt|semmel|kuchen|suppe|soße|sauce|salat|mus|brei|hefe|käse|marinade|braten|glas|fladen/i;
+const BEVERAGE_NAME_RE = /wasser|wein|saft|bier\b|tee|kaffee|limonade|cola|brause|most|sekt|schorle|cider|schnaps|likör|spirituose/i;
+const BEVERAGE_FOOD_RE = /brot|bröt|semmel|kuchen|suppe|soße|sauce|salat|mus|brei|hefe|käse|marinade|braten|glas|fladen/i;
 
-function normalizeItem(raw) {
+export function normalizeItem(raw) {
   if (!raw || typeof raw !== "object") return null;
   const name = String(raw.name || raw.lebensmittel || "").trim();
   if (!name) return null;
   const category = String(raw.category || raw.kategorie || "Sonstiges").trim();
   const portionG = Number(raw.portion_g ?? raw.gramm ?? raw.amount_g ?? 0);
   const portionMl = Number(raw.portion_ml ?? raw.ml ?? raw.amount_ml ?? 0);
+  const is_beer = BEER_RE.test(name) && !BEER_FOOD_RE.test(name);
   const isBeverage = /getränk|drink/i.test(category) ||
-    /wasser|wein|saft|bier|tee|kaffee|limonade|cola|brause|most|sekt|schorle|cider|schnaps|likör|spirituose/i.test(name);
+    is_beer ||
+    (BEVERAGE_NAME_RE.test(name) && !BEVERAGE_FOOD_RE.test(name));
   let portion = portionG > 0 ? portionG : portionMl > 0 ? portionMl : 0;
   if (!(portion > 0)) portion = isBeverage ? 200 : 100;
   return {
     name,
     portion_g: Number.isFinite(portion) && portion > 0 ? portion : 100,
     category,
-    is_beer: BEER_RE.test(name) && !/brot|bröt|semmel|kuchen|suppe|soße|sauce|salat|mus|brei/i.test(name),
+    is_beer,
   };
 }
 
