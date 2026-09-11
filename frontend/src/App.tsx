@@ -23,7 +23,6 @@ import {
   getAllMeals,
   saveMeal,
   deleteMeal,
-  getUnsyncedMeals,
   markSynced,
 } from "./storage.ts";
 import { faceIdAvailable, isRegistered, register, verify, webauthnSupported } from "./auth.ts";
@@ -142,13 +141,12 @@ export default function App() {
     return () => clearInterval(t);
   }, []);
 
-  useEffect(() => {
-    const handler = () => { if (navigator.onLine) trySync(); };
-    window.addEventListener("online", handler);
-    if (navigator.onLine) trySync();
-    return () => window.removeEventListener("online", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [driveConnected]);
+  // Der automatische Drive-Sync (trySync beim Start/Online-Werden) ist entfernt:
+  // Der Server synct jede gespeicherte Mahlzeit jetzt selbsttätig nach Drive
+  // (POST /api/meals). Ein zustätzliches Frontend-trySync würde Duplikate
+  // auf Drive erzeugen. Der manuelle Sync-Button (syncNow) bleibt als
+  // Fallback fuür historische Mahlzeiten, die vor dem Server-Auto-Sync
+  // entstanden sind.
 
   async function refreshMeals() {
     const local = await getAllMeals();
@@ -391,26 +389,6 @@ export default function App() {
       }, 3000);
     } catch (e: any) {
       setError(e.message || "Google Drive konnte nicht verbunden werden.");
-    }
-  }
-
-  async function trySync() {
-    const unsynced = await getUnsyncedMeals();
-    if (!unsynced.length) return;
-    if (!driveConnected) return;
-    let ok = 0;
-    for (const m of unsynced) {
-      try {
-        await uploadToDrive(m);
-        await markSynced(m.meal_id);
-        ok++;
-      } catch (e) {
-        console.warn("Sync fehlgeschlagen für", m.meal_id, e);
-      }
-    }
-    if (ok) {
-      setSyncMsg(`${ok} Mahlzeit(en) mit Google Drive synchronisiert.`);
-      refreshMeals();
     }
   }
 
