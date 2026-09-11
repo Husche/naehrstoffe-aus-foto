@@ -199,6 +199,29 @@ Proxmox-Host, z. B. unter `/opt/naehrstoffe-aus-foto/.env`.
 pct push 106 /opt/naehrstoffe-aus-foto/.env /opt/naehrstoffe-aus-foto/.env
 ```
 
+> **`failed to create file: ... No such file or directory`?** `pct push` kann die
+> Datei nur anlegen, wenn der Zielordner im Container bereits existiert. Der
+> Ordner entsteht erst durch den `git clone` in Schritt 2.2. Also zuerst das
+> Repo klonen (falls noch nicht geschehen), dann erst pushen:
+> ```bash
+> pct enter 106
+> cd /opt && git clone https://github.com/Husche/naehrstoffe-aus-foto.git
+> exit
+> # danach klappt der pct push.
+> ```
+> Alternativ direkt ins Home pushen und später verschieben:
+> ```bash
+> pct push 106 /opt/naehrstoffe-aus-foto/.env /root/.env
+> pct enter 106
+> mv /root/.env /opt/naehrstoffe-aus-foto/.env   # nach dem Klonen
+> chmod 600 /opt/naehrstoffe-aus-foto/.env
+> exit
+> ```
+> Kontrolle, dass die Quelldatei auf dem Host wirklich existiert:
+> ```bash
+> ls -l /opt/naehrstoffe-aus-foto/.env   # auf dem Proxmox-Host
+> ```
+
 Rechte restriktiv setzen (im Container):
 
 ```bash
