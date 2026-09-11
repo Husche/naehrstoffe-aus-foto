@@ -307,9 +307,16 @@ pct enter 112
 
 ### 5.1 User / Datenbank / Extension anlegen
 
+Als root im Container verlangt PostgreSQL bei lokaler Socket-Verbindung
+Peer-Auth (OS-User = DB-User). Daher als OS-User `postgres` connecten
+(root, kein sudo nötig):
+
 ```bash
-psql -U postgres
+su - postgres -c psql
 ```
+
+> Wenn das mit `-c psql` die Shell nicht hält, alternativ interaktiv:
+> `su - postgres` dann `psql` und nachher `exit`.
 
 ```sql
 -- User (Passwort durch eigenes sicheres Passwort ersetzen;
