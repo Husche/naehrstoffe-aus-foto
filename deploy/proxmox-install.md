@@ -490,10 +490,18 @@ Caddyfile öffnen (Pfad je nach Setup, z. B. `/etc/caddy/Caddyfile`):
 nano /etc/caddy/Caddyfile
 ```
 
-Neuen Block anhängen (Subdomain durch echte des Users ersetzen):
+Neuen Block anhängen (Subdomain durch echte des Users ersetzen).
+
+**Wichtig:** Der Cloudflare-Tunnel terminiert bereits TLS und reicht **HTTP** an
+Caddy weiter. Daher den Block zwingend mit `http://`-Präfix schreiben — sonst
+macht Caddy Auto-HTTPS und leitet HTTP→HTTPS weiter → endlose
+Weiterleitungs-Schleife („The page isn't redirecting properly"). TLS übernimmt
+der Tunnel; Caddy bedient nur HTTP. `X-Forwarded-Proto` fest auf `https`
+setzen, damit die App weiß, dass die Originalverbindung verschlüsselt war
+(relevant für WebAuthn/FaceID).
 
 ```caddyfile
-naehrstoff.deine-domain.de {
+http://naehrstoff.deine-domain.de {
     # Fotos können groß sein (bis ~25 MB)
     request_body {
         max_size 25MB
@@ -503,16 +511,15 @@ naehrstoff.deine-domain.de {
         header_up Host {host}
         header_up X-Real-IP {remote_host}
         header_up X-Forwarded-For {remote_host}
-        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Proto https
     }
 }
 ```
 
-> Falls Caddy hier bereits TLS selbst terminiert (lokales Zertifikat) UND der
-> Cloudflare-Tunnel vorgeschaltet ist: sicherstellen, dass der Tunnel im
-> Cloudflare-Dashboard auf `http://<caddy-ip>:80` (bzw. den internen Caddy-Port)
-> zeigt und Caddy nur intern lauscht. Im Standardfall terminiert der Tunnel
-> TLS und reicht an Caddy weiter, Caddy wiederum reverse-proxied an CT 106.
+> Falls Caddy an anderer Stelle selbst TLS terminiert (eigenes Zertifikat) UND
+> der Tunnel vorgeschaltet ist, konfliktfrei lassen: der Tunnel reicht HTTP an
+> Caddy, Caddy reverse-proxied an CT 106. Nur der hier gezeigte App-Block
+> braucht das `http://`-Präfix, um die Schleife zu vermeiden.
 
 Caddy neu laden:
 
