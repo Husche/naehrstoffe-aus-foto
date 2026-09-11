@@ -380,11 +380,32 @@ grep -q "^listen_addresses" "$PGCONF" \
 
 ### 5.3 Konfiguration neu laden
 
+Die Syntax ist `pg_ctlcluster <version> <cluster> <action>` — der
+Cluster-Name (Standard `main`) darf nicht fehlen. Zuerst Version/Cluster
+herausfinden:
+
 ```bash
-pg_ctlcluster 15 reload
-# oder bei anderer Major-Version:
-# pg_ctlcluster <version> reload
+pg_lsclusters
+# z. B.  Ver Cluster Port Status ... Daten
+#        15  main    5432 online ...   /var/lib/postgresql/15/main
 ```
+
+Erste Spalte = Version, zweite = Cluster-Name. Damit reloaden:
+
+```bash
+pg_ctlcluster 15 main reload
+# oder entsprechend deiner Version, z. B.:
+# pg_ctlcluster 16 main reload
+```
+
+> `pg_ctlcluster: command not found` oder direktere Alternative:
+> ```bash
+> systemctl reload postgresql
+> ```
+> oder als OS-User postgres:
+> ```bash
+> su - postgres -c "pg_ctl -D /var/lib/postgresql/15/main reload"
+> ```
 
 ### 5.4 Verbindung vom App-Container testen (optional, nach Schritt 2)
 
