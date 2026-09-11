@@ -85,6 +85,9 @@ function cacheSet(key, val) {
   }
 }
 
+const RETRY_ATTEMPTS = 3;
+const RETRY_BACKOFF_MS = 800;
+
 export async function fetchNutrients(foodName) {
   const key = foodName.toLowerCase().trim();
   const cached = cacheGet(key);
@@ -95,49 +98,91 @@ export async function fetchNutrients(foodName) {
   )}&search_simple=1&action=process&json=1&page_size=10&fields=product_name,code,nutriments`;
 
   let product = null;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(url, {
-      headers: { "User-Agent": "NaehrstoffFoto/1.0 (self-hosted)" },
-      signal: controller.signal,
-    });
-    if (res.ok) {
-      const data = await res.json();
-      const products = data.products || [];
-      product = pickBest(products, key);
+  let success = false;
+  for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    try {
+      const res = await fetch(url, {
+        headers: { "User-Agent": "NaehrstoffFoto/1.0 (self-hosted)" },
+        signal: controller.signal,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const products = data.products || [];
+        product = pickBest(products, key);
+        success = true;
+        break;
+      }
+      // 4xx: kein Retry (z. B. 400/404), direkt abbrechen.
+      if (res.status >= 400 && res.status < 500) {
+        console.warn(`OFF Fetch ${res.status} fuer "${foodName}" (kein Retry)`);
+        break;
+      }
+      // 5xx (z. B. 503 Service Temporarily Unavailable): retry mit Backoff.
+      console.warn(`OFF Fetch ${res.status} fuer "${foodName}" (Versuch ${attempt}/${RETRY_ATTEMPTS})`);
+      if (attempt < RETRY_ATTEMPTS) await sleep(RETRY_BACKOFF_MS * attempt);
+    } catch (e) {
+      console.warn(`OFF Fetch Fehler fuer "${foodName}" (Versuch ${attempt}/${RETRY_ATTEMPTS}):`, e.message);
+      if (attempt < RETRY_ATTEMPTS) await sleep(RETRY_BACKOFF_MS * attempt);
+    } finally {
+      clearTimeout(timeout);
     }
-  } catch (e) {
-    console.warn("OFF Fetch Fehler:", e.message);
-  } finally {
-    clearTimeout(timeout);
   }
 
   const result = extractNutrients(product);
-  cacheSet(key, result);
+  // Nur erfolgreiche Treffer cachen. Fehler (z. B. 503/Netzwerk) nicht
+  // festhalten, sonst liefert jeder weitere Versuch denselben leeren Treffer
+  // bis zum Prozessneustart.
+  if (success) cacheSet(key, result);
   return result;
+}
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// Hinweise, dass ein OFF-Produkt verarbeitet ist (Saft, Püree, Sirup, ...).
+// Bei einem frischen Lebensmittel-Namen (z. B. "Apfel") sollen diese Treffer
+// abgewertet werden, damit nicht "Apfel naturtrüb Direktsaft" gewinnt.
+const PROCESSED_HINTS = [
+  "saft", "juice", "direktsaft", "sirup", "nektar", "püree", "pueree",
+  "mark", "mus", "getränk", "drink", "konfitüre", "marmelade", "gelee",
+  "chips", "trocken", "pulver", "smoothie", "kompott",
+];
+
+function isProcessedName(name) {
+  const n = (name || "").toLowerCase();
+  return PROCESSED_HINTS.some((h) => n.includes(h));
 }
 
 function pickBest(products, query) {
   if (!products.length) return null;
   const q = query.toLowerCase();
+  const queryProcessed = isProcessedName(q);
   let best = null;
-  let bestScore = -1;
+  let bestScore = -Infinity;
   for (const p of products) {
-    let score = 0;
     const n = p.nutriments || {};
-    // Datenqualität: komplette Makros am wichtigsten.
+    const name = (p.product_name || "").toLowerCase();
+    let score = 0;
+    // Namensübereinstimmung als stärkstes Signal (vor Datenqualität), damit
+    // der Name stimmt, bevor Sekundärkriterien entscheiden.
+    if (name === q) score += 20;
+    else if (name.startsWith(q)) score += 14;
+    else if (q.startsWith(name) && name.length > 2) score += 10;
+    else if (name.includes(q)) score += 8;
+    else if (q.includes(name) && name.length > 2) score += 4;
+    else score -= 4; // Name passt gar nicht -> abwerten.
+    // Verarbeitungs-Mismatch bestrafen: Query frisch, Produkt verarbeitet
+    // (z. B. "Apfel" vs. "Apfel naturtrüb Direktsaft") -> stark abwerten.
+    if (!queryProcessed && isProcessedName(name)) score -= 15;
+    // Datenqualität: komplette Makros am wichtigsten (sekundär).
     if (n["energy-kcal_100g"] != null) score += 5;
     if (n.proteins_100g != null) score += 3;
     if (n.carbohydrates_100g != null) score += 3;
     if (n.fat_100g != null) score += 3;
     if (n.fiber_100g != null) score += 2;
-    // Namensübereinstimmung als starkes Signal.
-    const name = (p.product_name || "").toLowerCase();
-    if (name === q) score += 10;
-    else if (name.startsWith(q)) score += 7;
-    else if (name.includes(q)) score += 5;
-    else if (q.includes(name) && name.length > 2) score += 3;
     // Bevorzuge deutsche Produkte (bessere Treffer für deutsche Lebensmittelnamen).
     if (p.countries_tags && p.countries_tags.includes("en:germany")) score += 1;
     if (score > bestScore) {
