@@ -1,10 +1,11 @@
 import { config } from "./config.js";
 
-const FOOD_PROMPT = `Identifiziere alle Lebensmittel auf diesem Teller.
-Für jedes Lebensmittel: Name (auf Deutsch), geschätzte Portionsgröße in Gramm (verwende Standardteller-Referenz, Tellerdurchmesser ~25 cm) und eine grobe Kategorie.
+const FOOD_PROMPT = `Identifiziere alle Lebensmittel und Getränke auf diesem Teller/in diesem Glas.
+Für feste Lebensmittel: Name (auf Deutsch), geschätzte Portionsgröße in Gramm (Tellerreferenz ~25 cm Durchmesser) und eine grobe Kategorie (z. B. Getreide, Gemüse, Fleisch, Obst, Milchprodukt).
+Für Getränke (Wasser, Wein, Saft, Bier, Tee, Kaffee, Limonade, etc.): Name (auf Deutsch), geschätzte Menge in Millilitern als "portion_ml" und Kategorie "Getränk".
+Benenne Getränke nach der erkennbaren Flüssigkeit, nicht nach dem Gefäß – z. B. "Wasser", "Rotwein", "Weißwein", "Orangensaft", "Bier", "Tee", "Kaffee". Verwende nicht "Getränk" als Name.
 Antworte AUSSCHLIESSLICH als JSON-Objekt im folgenden Format, kein Markdown, keine Erklärungen:
-{"items":[{"name":"Reis","portion_g":180,"category":"Getreide"}]}
-Gib "Bier" als Namen aus, wenn Bier erkennbar ist.`;
+{"items":[{"name":"Reis","portion_g":180,"category":"Getreide"},{"name":"Wasser","portion_ml":200,"category":"Getränk"}]}`;
 
 export async function detectFood(imageBase64, mimeType = "image/jpeg") {
   if (!config.mistral.apiKey) {
@@ -70,16 +71,29 @@ export async function detectFood(imageBase64, mimeType = "image/jpeg") {
   return items.map(normalizeItem).filter(Boolean);
 }
 
-function normalizeItem(raw) {
+const BEER_RE = /bier\b|\bbeer\b|\bpils\b|weizenbier\b|altbier\b|\bkölsch\b|rauchbier\b/i;
+const BEER_FOOD_RE = /brot|bröt|semmel|kuchen|suppe|soße|sauce|salat|mus|brei|hefe|käse|marinade|braten|glas|fladen/i;
+const BEVERAGE_NAME_RE = /wasser|wein|saft|bier\b|tee|kaffee|limonade|cola|brause|most|sekt|schorle|cider|schnaps|likör|spirituose/i;
+const BEVERAGE_FOOD_RE = /brot|bröt|semmel|kuchen|suppe|soße|sauce|salat|mus|brei|hefe|käse|marinade|braten|glas|fladen/i;
+
+export function normalizeItem(raw) {
   if (!raw || typeof raw !== "object") return null;
   const name = String(raw.name || raw.lebensmittel || "").trim();
   if (!name) return null;
-  const portion = Number(raw.portion_g ?? raw.gramm ?? raw.amount_g ?? 0);
+  const category = String(raw.category || raw.kategorie || "Sonstiges").trim();
+  const portionG = Number(raw.portion_g ?? raw.gramm ?? raw.amount_g ?? 0);
+  const portionMl = Number(raw.portion_ml ?? raw.ml ?? raw.amount_ml ?? 0);
+  const is_beer = BEER_RE.test(name) && !BEER_FOOD_RE.test(name);
+  const isBeverage = /getränk|drink/i.test(category) ||
+    is_beer ||
+    (BEVERAGE_NAME_RE.test(name) && !BEVERAGE_FOOD_RE.test(name));
+  let portion = portionG > 0 ? portionG : portionMl > 0 ? portionMl : 0;
+  if (!(portion > 0)) portion = isBeverage ? 200 : 100;
   return {
     name,
     portion_g: Number.isFinite(portion) && portion > 0 ? portion : 100,
-    category: String(raw.category || raw.kategorie || "Sonstiges").trim(),
-    is_beer: /bier|beer|pils|weizen|ale|lager/i.test(name),
+    category,
+    is_beer,
   };
 }
 
