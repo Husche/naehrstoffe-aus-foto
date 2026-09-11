@@ -17,6 +17,7 @@ import {
   getServerMeals,
   saveServerMeal,
   deleteServerMeal,
+  lookupFood,
 } from "./api.ts";
 import {
   getAllMeals,
@@ -89,6 +90,8 @@ export default function App() {
   const [online, setOnline] = useState(navigator.onLine);
   const [undo, setUndo] = useState<{ meal: Meal } | null>(null);
   const [theme, setTheme] = useState(() => (localStorage.getItem("naehrstoff_theme") as string) || "auto");
+  // Timer-Ref für debounced Lookup bei manueller Namenseingabe.
+  const lookupTimer = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   // Ref für den Undo-Timer, damit er beim Unmount/re-Trigger sicher gelöscht wird.
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Ref für das Drive-OAuth-Polling-Interval (Cleanup bei Unmount/Re-Trigger).
@@ -240,6 +243,84 @@ export default function App() {
     const items = [...draft.items];
     items[idx] = { ...items[idx], name };
     setDraft({ ...draft, items });
+    // Nährwerte für den eingegebenen Namen nachschlagen (debounced).
+    scheduleLookup(idx, name, items[idx].portion_g || 100);
+  }
+
+  // Manuelles Erfassen ohne Foto: leerer Draft mit einem leeren Item.
+  function startManualEntry() {
+    setError(null);
+    setSyncMsg(null);
+    setPreview(null);
+    setDraft({
+      meal_id: genId(),
+      timestamp: new Date().toISOString(),
+      items: [emptyFoodItem("")],
+      beer_flag: false,
+      sanity_issues: [],
+      synced: false,
+    });
+  }
+
+  // Debounced Lookup: ruft /api/lookup für einen manuell eingegebenen
+  // Lebensmittelnamen auf und übernimmt Quelle + Nährwerte + per100 ins Item.
+  function scheduleLookup(idx: number, name: string, portion_g: number) {
+    const trimmed = name.trim();
+    if (lookupTimer.current[idx]) clearTimeout(lookupTimer.current[idx]);
+    if (!trimmed) return;
+    lookupTimer.current[idx] = setTimeout(async () => {
+      try {
+        const { item } = await lookupFood(trimmed, portion_g);
+        setDraft((d) => {
+          if (!d) return d;
+          const items = [...d.items];
+          // Nur aktualisieren, wenn der Name noch derselbe ist (nicht überschreiben,
+          // falls der Nutzer inzwischen weitergetippt hat).
+          if (items[idx]?.name.trim().toLowerCase() !== trimmed.toLowerCase()) {
+            return d;
+          }
+          // Name und Portionsgröße behalten, Nährwerte/Quelle/per100 übernehmen.
+          items[idx] = {
+            ...items[idx],
+            name: trimmed,
+            source: item.source,
+            per100: item.per100,
+            kcal: item.kcal,
+            protein_g: item.protein_g,
+            fat_g: item.fat_g,
+            sat_fat_g: item.sat_fat_g,
+            carbs_g: item.carbs_g,
+            sugar_g: item.sugar_g,
+            fiber_g: item.fiber_g,
+            salt_g: item.salt_g,
+            sodium_mg: item.sodium_mg,
+            potassium_mg: item.potassium_mg,
+            calcium_mg: item.calcium_mg,
+            magnesium_mg: item.magnesium_mg,
+            iron_mg: item.iron_mg,
+            zinc_mg: item.zinc_mg,
+            phosphorus_mg: item.phosphorus_mg,
+            vitamin_a_mg: item.vitamin_a_mg,
+            vitamin_c_mg: item.vitamin_c_mg,
+            vitamin_d_ug: item.vitamin_d_ug,
+            vitamin_e_mg: item.vitamin_e_mg,
+            vitamin_b1_mg: item.vitamin_b1_mg,
+            vitamin_b2_mg: item.vitamin_b2_mg,
+            vitamin_b6_mg: item.vitamin_b6_mg,
+            vitamin_b12_ug: item.vitamin_b12_ug,
+            niacin_mg: item.niacin_mg,
+            vitamin_k_ug: item.vitamin_k_ug,
+            folate_ug: item.folate_ug,
+            cholesterol_mg: item.cholesterol_mg,
+            trans_fat_g: item.trans_fat_g,
+          };
+          return { ...d, items };
+        });
+      } catch (e: any) {
+        // Lookup-Fehler nicht blockierend: Quelle bleibt "manuell" mit 0-Werten.
+        console.warn("Lookup fehlgeschlagen für", trimmed, e.message);
+      }
+    }, 600);
   }
 
   async function saveMealLocal() {
@@ -474,6 +555,7 @@ export default function App() {
             removeItem={removeItem}
             addItem={addItem}
             editItemName={editItemName}
+            onManualEntry={startManualEntry}
             setBeer={(b: boolean) => draft && setDraft({ ...draft, beer_flag: b })}
             saveMealLocal={saveMealLocal}
             onDiscard={() => { setDraft(null); setPreview(null); setError(null); }}
@@ -554,6 +636,7 @@ function CaptureView({
   removeItem,
   addItem,
   editItemName,
+  onManualEntry,
   setBeer,
   saveMealLocal,
   onDiscard,
@@ -566,6 +649,7 @@ function CaptureView({
   removeItem: (idx: number) => void;
   addItem: () => void;
   editItemName: (idx: number, name: string) => void;
+  onManualEntry: () => void;
   setBeer: (b: boolean) => void;
   saveMealLocal: () => void;
   onDiscard: () => void;
@@ -594,6 +678,13 @@ function CaptureView({
                 onClick={() => document.getElementById("upload-input")?.click()}
               >
                 <span aria-hidden="true">📁</span> Bild auswählen
+              </button>
+              <button
+                className="ghost manual-btn"
+                aria-label="Lebensmittel ohne Foto manuell erfassen"
+                onClick={onManualEntry}
+              >
+                <span aria-hidden="true">✏️</span> Ohne Foto erfassen
               </button>
               {preview && <img src={preview} className="preview" alt="Vorschau des aufgenommenen Essens" />}
               <input id="cam-input" type="file" accept="image/*" capture="environment" aria-label="Kamera-Foto auswählen" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) onPickFile(f); e.target.value = ""; }} />

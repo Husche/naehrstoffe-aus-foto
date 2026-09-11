@@ -90,6 +90,37 @@ app.post("/api/analyze", upload.single("photo"), async (req, res) => {
   }
 });
 
+// --- Lookup: manuelle Lebensmittel-Eingabe (ohne Foto) ---
+// Nimmt Name + optionale Portionsgröße, ruft Nährstoffe von Open Food Facts ab
+// und liefert ein vollständiges FoodItem (inkl. source/per100/skalierte
+// Nährwerte) zurück. Ermöglicht das manuelle Erfassen eines Lebensmittels,
+// das auf dem Foto falsch erkannt wurde (z. B. Tee statt Bier).
+app.post("/api/lookup", async (req, res) => {
+  try {
+    const { name, portion_g } = req.body || {};
+    const foodName = typeof name === "string" ? name.trim() : "";
+    if (!foodName) {
+      return res.status(400).json({ error: "Kein Lebensmittelname angegeben." });
+    }
+    const grams = Math.max(0, Number(portion_g) || 0);
+    const [per100] = await fetchNutrientsBatch([foodName]);
+    const scaled = scaleNutrients(per100, grams);
+    const item = {
+      name: foodName,
+      category: "Sonstiges",
+      portion_g: grams,
+      is_beer: false,
+      source: per100.source,
+      per100,
+      ...scaled,
+    };
+    res.json({ item });
+  } catch (e) {
+    console.error("Lookup Fehler:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // --- CSV aus Mahlzeit generieren ---
 app.post("/api/csv", (req, res) => {
   try {

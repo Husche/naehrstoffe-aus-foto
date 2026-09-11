@@ -23,6 +23,20 @@ export async function analyzePhoto(file: File): Promise<AnalyzeResponse> {
   return jsonOrThrow(res);
 }
 
+// Manuelles Lebensmittel-Lookup (ohne Foto): Name + optionale Menge ->
+// vollständiges FoodItem mit Nährwerten + Quelle.
+export async function lookupFood(
+  name: string,
+  portion_g: number
+): Promise<{ item: import("./types.ts").FoodItem }> {
+  const res = await fetch(`${API}/api/lookup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, portion_g }),
+  });
+  return jsonOrThrow(res);
+}
+
 export async function downloadCsv(meal: Meal): Promise<Blob> {
   const res = await fetch(`${API}/api/csv`, {
     method: "POST",

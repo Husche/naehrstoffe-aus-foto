@@ -169,6 +169,25 @@ select {
   font-size: 36px;
 }
 .upload-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 360px;
+  margin: 8px auto;
+  padding: 12px;
+  background: var(--surface);
+  color: var(--primary);
+  border: 1px solid var(--border);
+}
+.manual-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px;
   margin-top: 10px;
   background: var(--surface);
   color: var(--primary);
