@@ -124,6 +124,22 @@ apt update && apt -y upgrade
 apt -y install ca-certificates curl gnupg git
 ```
 
+### 2.0 Locale erzeugen (vermeidet `perl: Setting locale failed`)
+
+Frische Debian-LXC-Templates haben oft `LANG=en_US.UTF-8` gesetzt, aber die
+Locale noch nicht erzeugt. Das führt zu harmlosen, aber irritierenden
+`perl: warning: Setting locale failed`-Meldungen (Befehle laufen trotzdem mit
+Fallback `C`). Einmalig erzeugen:
+
+```bash
+apt -y install locales
+sed -i 's/^# *en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen
+locale-gen
+update-locale LANG=en_US.UTF-8
+# in der aktuellen Shell aktivieren:
+export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+```
+
 ### 2.1 Docker installieren (offizieller Weg)
 
 ```bash
