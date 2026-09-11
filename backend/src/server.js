@@ -160,7 +160,16 @@ app.post("/api/meals", async (req, res) => {
     if (!meal || !meal.meal_id || !Array.isArray(meal.items)) {
       return res.status(400).json({ error: "Ungültige Mahlzeit." });
     }
-    await storeUpsertMeal(meal);
+    const clean = await storeUpsertMeal(meal);
+    // Automatischer Drive-Sync: jede gespeicherte Mahlzeit wird sofort als
+    // CSV nach Google Drive hochgeladen, sobald Drive verbunden ist. Der
+    // Sync läuft non-blocking im Hintergrund; Drive-Fehler bremsen weder
+    // die DB-Persistenz noch die Antwort an den Client.
+    if (isConnected()) {
+      uploadCsvToDrive(`naehrstoffe_${clean.meal_id}.csv`, buildCsv(clean))
+        .then(() => console.log(`Drive-Sync ok: ${clean.meal_id}`))
+        .catch((e) => console.warn(`Drive-Sync fehlgeschlagen (${clean.meal_id}):`, e.message));
+    }
     res.json({ ok: true, meal_id: meal.meal_id });
   } catch (e) {
     res.status(500).json({ error: e.message });
