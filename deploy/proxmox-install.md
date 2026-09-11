@@ -179,6 +179,32 @@ cd naehrstoffe-aus-foto
 > Noch **kein** `docker compose up` — erst nachdem die `.env` vorliegt (Schritt 3)
 > und die DB erreichbar ist (Schritt 5).
 
+> **`Could not resolve host: github.com`?** Der Container kann keine Hostnamen
+> auflösen (häufig bei frischen LXC-Templates). Im Container prüfen:
+> ```bash
+> cat /etc/resolv.conf          # muss mindestens eine nameserver-Zeile haben
+> ip route                      # braucht eine default-Route via Gateway
+> getent hosts github.com       # muss einen Hostnamen zurückliefern
+> ```
+> Falls `/etc/resolv.conf` leer/ohne `nameserver`, DNS ergänzen
+> (z. B. pi-hole-IP oder Gateway):
+> ```bash
+> echo "nameserver 192.168.178.1" > /etc/resolv.conf
+> # alternativ/zusätzlich öffentlicher DNS:
+> echo "nameserver 8.8.8.8" >> /etc/resolv.conf
+> # falls die default-Route fehlt:
+> ip route add default via 192.168.178.1
+> ```
+> Dauerhaft in der Proxmox-Container-Config (auf dem Host) hinterlegen, falls
+> `/etc/resolv.conf` beim Reboot überschrieben wird:
+> ```bash
+> pct set 106 --nameserver "192.168.178.1 8.8.8.8"
+> pct reboot 106
+> ```
+> Danach `getent hosts github.com` testen; klappt es, den Klon ggf. neu
+> anlegen (`rm -rf /opt/naehrstoffe-aus-foto` falls ein Rest vom Fehlversuch
+> vorliegt, dann `git clone` wiederholen).
+
 Container verlassen (zurück zum Proxmox-Host):
 ```bash
 exit
