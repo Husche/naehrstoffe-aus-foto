@@ -121,10 +121,10 @@ export async function fetchNutrients(foodName) {
       }
       // 5xx (z. B. 503 Service Temporarily Unavailable): retry mit Backoff.
       console.warn(`OFF Fetch ${res.status} fuer "${foodName}" (Versuch ${attempt}/${RETRY_ATTEMPTS})`);
-      if (attempt < RETRY_ATTEMPTS) await sleep(RETRY_BACKOFF_MS * attempt);
+      if (attempt < RETRY_ATTEMPTS) await sleep(RETRY_BACKOFF_MS * attempt + jitter());
     } catch (e) {
       console.warn(`OFF Fetch Fehler fuer "${foodName}" (Versuch ${attempt}/${RETRY_ATTEMPTS}):`, e.message);
-      if (attempt < RETRY_ATTEMPTS) await sleep(RETRY_BACKOFF_MS * attempt);
+      if (attempt < RETRY_ATTEMPTS) await sleep(RETRY_BACKOFF_MS * attempt + jitter());
     } finally {
       clearTimeout(timeout);
     }
@@ -140,6 +140,12 @@ export async function fetchNutrients(foodName) {
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+// Kleiner Zufalls-Jitter (0-200 ms), um synchronisierte Retries
+// (Thundering Herd) bei mehreren gleichzeitigen Lookups zu glätten.
+function jitter() {
+  return Math.floor(Math.random() * 200);
 }
 
 // Hinweise, dass ein OFF-Produkt verarbeitet ist (Saft, Püree, Sirup, ...).
@@ -223,9 +229,27 @@ export function scaleNutrients(per100, grams) {
   return out;
 }
 
-// Parallelisierte Nährstoffabfrage für mehrere Lebensmittel.
+// Maximale Anzahl paralleler OFF-Requests, um Backend + OFF bei Mahlzeiten
+// mit vielen Items oder bösartigen Inputs (viele Namen) nicht zu überlasten.
+const BATCH_CONCURRENCY = 5;
+
+// Parallelisierte Nährstoffabfrage für mehrere Lebensmittel mit begrenzter
+// Konkurrenz, damit nicht Dutzende OFF-Requests gleichzeitig feuern.
 export async function fetchNutrientsBatch(foodNames) {
-  return Promise.all(foodNames.map((n) => fetchNutrients(n)));
+  const results = new Array(foodNames.length);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < foodNames.length) {
+      const i = cursor++;
+      results[i] = await fetchNutrients(foodNames[i]);
+    }
+  }
+  const workers = [];
+  for (let w = 0; w < Math.min(BATCH_CONCURRENCY, foodNames.length); w++) {
+    workers.push(worker());
+  }
+  await Promise.all(workers);
+  return results;
 }
 
 function round2(v) {
