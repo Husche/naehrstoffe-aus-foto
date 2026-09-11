@@ -247,6 +247,13 @@ export default function App() {
     scheduleLookup(idx, name, items[idx].portion_g || 100);
   }
 
+  // Alle noch laufenden Lookup-Timer abbrechen (beim Speichern/Verwerfen),
+  // damit kein nachträgliches setDraft auf einen neuen/leeren Draft feuert.
+  function clearLookupTimers() {
+    for (const t of Object.values(lookupTimer.current)) clearTimeout(t);
+    lookupTimer.current = {};
+  }
+
   // Manuelles Erfassen ohne Foto: leerer Draft mit einem leeren Item.
   function startManualEntry() {
     setError(null);
@@ -336,6 +343,7 @@ export default function App() {
         saveServerMeal(draft).catch((e) => console.warn("Server-Save fehlgeschlagen:", e));
       }
       setSyncMsg("Mahlzeit lokal gespeichert." + (navigator.onLine ? "" : " Wird synchronisiert, wenn online."));
+      clearLookupTimers();
       setDraft(null);
       setPreview(null);
       refreshMeals();
@@ -558,7 +566,7 @@ export default function App() {
             onManualEntry={startManualEntry}
             setBeer={(b: boolean) => draft && setDraft({ ...draft, beer_flag: b })}
             saveMealLocal={saveMealLocal}
-            onDiscard={() => { setDraft(null); setPreview(null); setError(null); }}
+            onDiscard={() => { clearLookupTimers(); setDraft(null); setPreview(null); setError(null); }}
           />
         )}
 

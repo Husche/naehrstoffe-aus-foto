@@ -102,6 +102,9 @@ app.post("/api/lookup", async (req, res) => {
     if (!foodName) {
       return res.status(400).json({ error: "Kein Lebensmittelname angegeben." });
     }
+    if (foodName.length > 80) {
+      return res.status(400).json({ error: "Lebensmittelname zu lang (max. 80 Zeichen)." });
+    }
     const grams = Math.max(0, Number(portion_g) || 0);
     const [per100] = await fetchNutrientsBatch([foodName]);
     const scaled = scaleNutrients(per100, grams);
