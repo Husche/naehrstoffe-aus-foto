@@ -17,7 +17,11 @@ RUN npm install --omit=dev
 
 COPY backend/src ./src
 # Gebautes Frontend einbinden, damit Express es ausliefert (SPA).
-COPY --from=build-frontend /app/frontend/dist ./frontend/dist
+# server.js nutzt relative Pfade "../frontend/dist" (aufgelöst vom CWD).
+# Im Container ist WORKDIR=/app, also muss dist nach /frontend/dist (nicht
+# /app/frontend/dist), sonst findet Express die Dateien nicht ("Frontend nicht
+# gebaut").
+COPY --from=build-frontend /app/frontend/dist /frontend/dist
 
 EXPOSE 8787
 CMD ["node", "src/server.js"]
