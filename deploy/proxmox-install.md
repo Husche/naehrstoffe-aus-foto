@@ -529,21 +529,42 @@ exit
 
 ### 7.2 Cloudflare-Tunnel: Public Hostname anlegen
 
-Im **Cloudflare-Dashboard** (Zero Trust → Networks → Tunnels):
+Cloudflare hat das Zero-Trust-UI umgebaut: die frühere Schaltfläche
+„Public Hostname → Add a public hostname“ heißt jetzt **„Published application“**
+und wird über den **Routes**-Tab des Tunnels angelegt. Der Einstieg liegt
+außerdem jetzt unter **Networking** (nicht mehr „Networks“).
 
-1. Bestehenden Tunnel (der zu CT 104 gehört) auswählen → **Configure**.
-2. Reiter **Public Hostname** → **Add a public hostname**.
-3. Felder:
+Im **Cloudflare-Dashboard**:
+
+1. Einloggen → **Networking** → **Tunnels**
+   (früher: Zero Trust → Networks → Tunnels).
+2. Den bestehenden Tunnel (der zu CT 104 gehört) in der Liste anklicken.
+3. Reiter **Routes** öffnen → **Add route** → **Published application**
+   wählen (früher: „Public Hostname → Add a public hostname“).
+4. Felder ausfüllen:
    - **Subdomain**: `naehrstoff` (oder gewünschte Subdomain)
-   - **Domain**: eigene Domain (z. B. `deine-domain.de`)
-   - **Type**: `HTTP`
-   - **URL**: interne Adresse des Caddy in CT 104, z. B. `192.168.178.104:80`
-     (bzw. den Port, auf dem Caddy intern lauscht)
-4. **Save hostname**.
+   - **Domain**: eigene Domain aus dem Dropdown (z. B. `deine-domain.de`)
+     — muss in Cloudflare als Zone angelegt sein.
+   - **Path**: leer lassen (ganzes App-Verzeichnis weiterleiten).
+   - **Service URL**: interne Adresse des Caddy in CT 104 inkl. Protokoll,
+     z. B. `http://192.168.178.104:80`
+     (bzw. den Port, auf dem Caddy intern lauscht).
+5. **Add route**.
 
-> Die öffentliche URL ergibt sich zu `https://naehrstoff.deine-domain.de`.
+Cloudflare legt automatisch den passenden DNS-CNAME an (zeigt auf
+`<UUID>.cfargotunnel.com`). Die öffentliche URL ergibt sich zu
+`https://naehrstoff.deine-domain.de`.
+
 > Dieser Wert muss exakt mit `GOOGLE_REDIRECT_URI` und `CORS_ORIGIN` in der
 > `.env` übereinstimmen (Schritt 4).
+>
+> Hinweis zu mehrstufigen Subdomains: Bei mehr als einer Subdomain-Ebene
+> (z. B. `app.naehrstoff.deine-domain.de`) benötigt Cloudflare ein
+> „Advanced Certificate“ — einfache Subdomain `naehrstoff` hat das nicht.
+>
+> Quelle Doku:
+> https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/get-started/create-remote-tunnel/
+> (Abschnitt „2a. Publish an application“)
 
 ---
 
