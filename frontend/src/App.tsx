@@ -447,11 +447,48 @@ export default function App() {
   const todayItems = useMemo(() => todayMeals.flatMap((m) => m.items), [todayMeals]);
 
   const todayTotals = useMemo(() => {
-    return MACRO_KEYS.reduce((acc, k) => {
+    return [...MACRO_KEYS, ...MICRO_KEYS].reduce((acc, k) => {
       acc[k] = sumKey(todayItems, k as keyof FoodItem);
       return acc;
     }, {} as Record<string, number>);
   }, [todayItems]);
+
+  // Monats-Mahlzeiten (aktueller Kalendermonat) für Monatsdurchschnitt.
+  const monthMeals = useMemo(() => {
+    const now = new Date();
+    return meals.filter((m) => {
+      const d = new Date(m.timestamp);
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    });
+  }, [meals]);
+
+  // Tages-Summen je Datum innerhalb des aktuellen Monats.
+  const monthDailyTotals = useMemo(() => {
+    const map = new Map<string, FoodItem[]>();
+    for (const m of monthMeals) {
+      const key = new Date(m.timestamp).toDateString();
+      const arr = map.get(key) || [];
+      arr.push(...m.items);
+      map.set(key, arr);
+    }
+    return [...map.entries()].map(([day, items]) => ({
+      day,
+      totals: [...MACRO_KEYS, ...MICRO_KEYS].reduce((acc, k) => {
+        acc[k] = sumKey(items, k as keyof FoodItem);
+        return acc;
+      }, {} as Record<string, number>),
+    }));
+  }, [monthMeals]);
+
+  // Monatsdurchschnitt pro Nährstoff über alle erfassten Tage.
+  const monthAverages = useMemo(() => {
+    const dayCount = monthDailyTotals.length || 1;
+    return [...MACRO_KEYS, ...MICRO_KEYS].reduce((acc, k) => {
+      const sum = monthDailyTotals.reduce((a, d) => a + (d.totals[k] || 0), 0);
+      acc[k] = sum / dayCount;
+      return acc;
+    }, {} as Record<string, number>);
+  }, [monthDailyTotals]);
 
   const last7 = useMemo(() => {
     const now = new Date();
@@ -553,6 +590,8 @@ export default function App() {
             todayMeals={todayMeals}
             todayItems={todayItems}
             totals={todayTotals}
+            monthAverages={monthAverages}
+            monthDayCount={monthDailyTotals.length}
             onDownload={handleDownloadCsv}
             onSync={syncNow}
             onRemove={removeMeal}
@@ -770,6 +809,8 @@ function TodayView({
   todayMeals,
   todayItems,
   totals,
+  monthAverages,
+  monthDayCount,
   onDownload,
   onSync,
   onRemove,
@@ -779,6 +820,8 @@ function TodayView({
   todayMeals: Meal[];
   todayItems: FoodItem[];
   totals: Record<string, number>;
+  monthAverages: Record<string, number>;
+  monthDayCount: number;
   onDownload: (meal: Meal) => void;
   onSync: (meal: Meal) => void;
   onRemove: (id: string) => void;
@@ -798,13 +841,36 @@ function TodayView({
           ))}
         </div>
         <div className="micro-grid">
-          {MICRO_KEYS.slice(0, 8).map((k) => (
+          {MICRO_KEYS.map((k) => (
             <div key={k}>
               <span>{MACRO_LABELS[k]}</span>
               <b>{Math.round(sumKey(todayItems, k as keyof FoodItem) * 100) / 100}</b>
             </div>
           ))}
         </div>
+      </div>
+
+      <div className="card">
+        <h3>Monatsdurchschnitt ({new Date().toLocaleDateString("de-DE", { month: "long", year: "numeric" })})</h3>
+        <div className="macro-summary">
+          {MACRO_KEYS.map((k) => (
+            <div className="m" key={k}>
+              <div className="v">{Math.round((monthAverages[k] || 0) * 100) / 100}</div>
+              <div className="l">{MACRO_LABELS[k].split(" ")[0]}</div>
+            </div>
+          ))}
+        </div>
+        <div className="micro-grid">
+          {MICRO_KEYS.map((k) => (
+            <div key={k}>
+              <span>{MACRO_LABELS[k]}</span>
+              <b>{Math.round((monthAverages[k] || 0) * 100) / 100}</b>
+            </div>
+          ))}
+        </div>
+        <p className="month-note">
+          Ø pro Tag über {monthDayCount} {monthDayCount === 1 ? "erfassten Tag" : "erfasste Tage"} im aktuellen Monat.
+        </p>
       </div>
 
       {!driveConnected && (

@@ -524,6 +524,7 @@ select {
 .beer-flag { color: var(--beer); font-size: 14px; }
 .history-title { color: var(--muted); margin-bottom: 8px; }
 .empty-card { text-align: center; color: var(--muted); }
+.month-note { color: var(--muted); font-size: 13px; margin-top: 10px; }
 .history-right { text-align: right; }
 .history-actions { margin-top: 6px; }
 .btn-remove-sm { padding: 4px 8px; font-size: 12px; }
