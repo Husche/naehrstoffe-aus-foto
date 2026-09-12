@@ -89,7 +89,7 @@ function cacheSet(key, val) {
 const RETRY_ATTEMPTS = 3;
 const RETRY_BACKOFF_MS = 800;
 
-export async function fetchNutrients(foodName) {
+export async function fetchNutrients(foodName, category = "") {
   const key = foodName.toLowerCase().trim();
   const cached = cacheGet(key);
   if (cached) return cached;
@@ -137,7 +137,7 @@ export async function fetchNutrients(foodName) {
   // hinterlegt sind (z. B. türkische Speisen, hausgemachte Soßen). Schlägt
   // der Fallback fehl, bleiben die 0-Werte erhalten.
   if (result.source === "none") {
-    const est = await estimateNutrients(foodName, "").catch(() => null);
+    const est = await estimateNutrients(foodName, category).catch(() => null);
     if (est) {
       for (const col of NUTRIENT_COLUMNS) {
         if (est[col] != null) result[col] = Number(est[col]) || 0;
@@ -249,13 +249,13 @@ const BATCH_CONCURRENCY = 5;
 
 // Parallelisierte Nährstoffabfrage für mehrere Lebensmittel mit begrenzter
 // Konkurrenz, damit nicht Dutzende OFF-Requests gleichzeitig feuern.
-export async function fetchNutrientsBatch(foodNames) {
+export async function fetchNutrientsBatch(foodNames, categories) {
   const results = new Array(foodNames.length);
   let cursor = 0;
   async function worker() {
     while (cursor < foodNames.length) {
       const i = cursor++;
-      results[i] = await fetchNutrients(foodNames[i]);
+      results[i] = await fetchNutrients(foodNames[i], categories && categories[i]);
     }
   }
   const workers = [];
