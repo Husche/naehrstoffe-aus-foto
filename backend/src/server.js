@@ -61,7 +61,7 @@ app.post("/api/analyze", upload.single("photo"), async (req, res) => {
     const detected = await detectFood(base64, mime);
 
     // Nährstoffe parallel für alle Lebensmittel abfragen.
-    const per100s = await fetchNutrientsBatch(detected.map((d) => d.name));
+    const per100s = await fetchNutrientsBatch(detected.map((d) => d.name), detected.map((d) => d.category));
     const items = detected.map((d, i) => {
       const per100 = per100s[i];
       const scaled = scaleNutrients(per100, d.portion_g);

@@ -69,6 +69,19 @@ jobs:
           assert(sanityCheckPortion("X", 0, "Sonstiges").length > 0, "Sanity: 0g flagged");
           assert(sanityCheckMeal([{ name: "Reis", portion_g: 180, category: "Reis", kcal: 234 }]).length === 0, "Sanity Meal realistisch ok");
           assert(sanityCheckMeal([{ name: "Reis", portion_g: 5000, category: "Reis", kcal: 6000 }]).length > 0, "Sanity Meal unrealistisch flagged");
+          // Neue Sanity-Kategorien (Sauce/Soße/Dip/Brötchen/Gebäck)
+          assert(sanityCheckPortion("Hollandaise", 50, "Soße").length === 0, "Sanity: 50g Soße (dt. Schreibweise) ok");
+          assert(sanityCheckPortion("Hollandaise", 50, "Sauce").length === 0, "Sanity: 50g Sauce ok");
+          assert(sanityCheckPortion("Jus", 250, "Soße").length > 0, "Sanity: 250g Soße flagged (>200)");
+          assert(sanityCheckPortion("Cacik", 80, "Dip").length === 0, "Sanity: 80g Dip ok");
+          assert(sanityCheckPortion("Cacik", 200, "Dip").length > 0, "Sanity: 200g Dip flagged (>150)");
+          assert(sanityCheckPortion("Brötchen", 50, "Brötchen").length === 0, "Sanity: 50g Brötchen ok");
+          assert(sanityCheckPortion("Brötchen", 150, "Brötchen").length > 0, "Sanity: 150g Brötchen flagged (>100)");
+          assert(sanityCheckPortion("Croissant", 70, "Gebäck").length === 0, "Sanity: 70g Gebäck ok");
+          assert(sanityCheckPortion("Croissant", 200, "Gebäck").length > 0, "Sanity: 200g Gebäck flagged (>150)");
+          // Espresso-Eckfall (Getränk 20–1000 ml)
+          assert(sanityCheckPortion("Espresso", 25, "Getränk").length === 0, "Sanity: 25ml Espresso ok");
+          assert(sanityCheckPortion("Espresso", 10, "Getränk").length > 0, "Sanity: 10ml Espresso flagged (<20)");
 
           // scaleNutrients
           const scaled = scaleNutrients({ kcal: 200, protein_g: 10, trans_fat_g: 1 }, 200);
@@ -115,6 +128,21 @@ jobs:
           assert(norm({ name: "" }) === null, "leerer Name -> null");
           assert(norm({ name: "X", portion_ml: "abc" }).portion_g === 100, "invalid ml -> Fallback");
           assert(norm({ name: "X", portion_g: -50 }).portion_g === 100, "negative portion -> Fallback");
+
+          // estimateNutrients-Export und No-Api-Key-Pfad (CI hat keinen Key -> null)
+          assert(typeof mistral.estimateNutrients === "function", "estimateNutrients exportiert");
+          const estNoKey = await mistral.estimateNutrients("Lahmacun", "Fleisch");
+          assert(estNoKey === null, "estimateNutrients ohne API-Key -> null");
+          // FOOD_PROMPT Referenzen für Saucen/türk. Speisen/Backwaren präsent
+          assert(mistral.FOOD_PROMPT.includes("Soße ~30"), "FOOD_PROMPT Soßen-Referenz vorhanden");
+          assert(mistral.FOOD_PROMPT.toLowerCase().includes("türkische speisen"), "FOOD_PROMPT türkische-Referenz vorhanden");
+          assert(mistral.FOOD_PROMPT.includes("Backwaren"), "FOOD_PROMPT Backwaren-Referenz vorhanden");
+          assert(mistral.FOOD_PROMPT.includes("Hollandaise"), "FOOD_PROMPT cremige Soßen-Referenz vorhanden");
+          assert(mistral.FOOD_PROMPT.includes("Lahmacun"), "FOOD_PROMPT Lahmacun-Referenz vorhanden");
+          assert(mistral.FOOD_PROMPT.includes("Brötchen"), "FOOD_PROMPT Brötchen-Referenz vorhanden");
+          assert(typeof mistral.NUTRIENT_PROMPT === "string", "NUTRIENT_PROMPT vorhanden");
+          assert(mistral.NUTRIENT_PROMPT.includes("kcal"), "NUTRIENT_PROMPT enthält kcal");
+          assert(mistral.NUTRIENT_PROMPT.includes("protein_g"), "NUTRIENT_PROMPT enthält protein_g");
 
           // Server-Store (CRUD)
           const fs = await import("node:fs"); const os = await import("node:os"); const p = await import("node:path");

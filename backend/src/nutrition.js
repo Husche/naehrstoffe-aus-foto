@@ -1,4 +1,5 @@
 import { config } from "./config.js";
+import { estimateNutrients } from "./mistral.js";
 
 // Nährstoffe, die wir aus Open Food Facts extrahieren (pro 100 g / 100 ml).
 // Schlüssel = OFF-Feldname, Wert = interner Spaltenname im CSV.
@@ -88,7 +89,7 @@ function cacheSet(key, val) {
 const RETRY_ATTEMPTS = 3;
 const RETRY_BACKOFF_MS = 800;
 
-export async function fetchNutrients(foodName) {
+export async function fetchNutrients(foodName, category = "") {
   const key = foodName.toLowerCase().trim();
   const cached = cacheGet(key);
   if (cached) return cached;
@@ -131,10 +132,23 @@ export async function fetchNutrients(foodName) {
   }
 
   const result = extractNutrients(product);
+  // Fallback auf Mistral-Schätzung, wenn OFF keinen Treffer lieferte oder
+  // der Treffer keine Kern-Makros enthält (z. B. unvollständige OFF-Einträge
+  // für türkische Speisen). Schlägt der Fallback fehl, bleiben die 0-Werte.
+  const coreEmpty = !(result.kcal || result.protein_g || result.fat_g || result.carbs_g);
+  if (result.source === "none" || coreEmpty) {
+    const est = await estimateNutrients(foodName, category).catch(() => null);
+    if (est) {
+      for (const col of NUTRIENT_COLUMNS) {
+        if (est[col] != null) result[col] = Number(est[col]) || 0;
+      }
+      result.source = "mistral-estimate";
+    }
+  }
   // Nur erfolgreiche Treffer cachen. Fehler (z. B. 503/Netzwerk) nicht
   // festhalten, sonst liefert jeder weitere Versuch denselben leeren Treffer
   // bis zum Prozessneustart.
-  if (success) cacheSet(key, result);
+  if (success || result.source === "mistral-estimate") cacheSet(key, result);
   return result;
 }
 
@@ -235,13 +249,13 @@ const BATCH_CONCURRENCY = 5;
 
 // Parallelisierte Nährstoffabfrage für mehrere Lebensmittel mit begrenzter
 // Konkurrenz, damit nicht Dutzende OFF-Requests gleichzeitig feuern.
-export async function fetchNutrientsBatch(foodNames) {
+export async function fetchNutrientsBatch(foodNames, categories) {
   const results = new Array(foodNames.length);
   let cursor = 0;
   async function worker() {
     while (cursor < foodNames.length) {
       const i = cursor++;
-      results[i] = await fetchNutrients(foodNames[i]);
+      results[i] = await fetchNutrients(foodNames[i], categories && categories[i]);
     }
   }
   const workers = [];
