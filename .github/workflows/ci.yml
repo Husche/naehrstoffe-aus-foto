@@ -157,6 +157,10 @@ jobs:
           assert(ref({ name: "Reis", portion_g: 180, category: "Getreide", is_beer: false }).portion_g === 180, "Ref: Reis 180g Mistral-Schätzung bleibt");
           // Getränk-Default 200 wird nicht durch feste-Ref überschrieben
           assert(ref({ name: "Wasser", portion_g: 200, category: "Getränk", is_beer: false }).portion_g === 200, "Ref: Wasser-Default 200 bleibt (Getränk)");
+          // Fuzzy-Match: Komposita matchen (Vollkornbrötchen, Dönerbox, Tomatensoße)
+          assert(ref({ name: "Vollkornbrötchen", portion_g: 100, category: "Backware", is_beer: false }).portion_g === 50, "Ref: Vollkornbrötchen (Fuzzy) -> 50g");
+          assert(ref({ name: "Dönerbox", portion_g: 100, category: "Fleisch", is_beer: false }).portion_g === 300, "Ref: Dönerbox (Fuzzy) -> 300g");
+          assert(ref({ name: "Tomatensoße", portion_g: 100, category: "Soße", is_beer: false }).portion_g === 50, "Ref: Tomatensoße (Fuzzy) -> 50g");
           // unbekannter Name -> keine Änderung
           assert(ref({ name: "Unbekannt", portion_g: 100, category: "Sonstiges", is_beer: false }).portion_g === 100, "Ref: unbekannter Name -> keine Änderung");
           // ungültiges Item -> durchgereicht

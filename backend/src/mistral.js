@@ -10,7 +10,7 @@ Antworte AUSSCHLIESSLICH als JSON-Objekt im folgenden Format, kein Markdown, kei
 {"items":[{"name":"Reis","portion_g":180,"category":"Getreide"},{"name":"Wasser","portion_ml":200,"category":"Getränk"}]}`;
 
 export const PORTION_REFERENCES = {
-  reis: 180, nudeln: 180, pasta: 180, kartoffeln: 220, pommes: 180, gemuese: 160, gemuesebeilage: 125, salatbeilage: 100, fleisch: 150, fisch: 150, soße: 50, sosse: 50, sauce: 50, hollandaise: 60, rahmsoße: 60, dip: 80, cacik: 80, haydari: 80, hummus: 80, lahmacun: 175, doener: 300, döner: 300, durüm: 300, dueruem: 300, pide: 250, köfte: 150, kofte: 150, börek: 100, borek: 100, adana: 175, brötchen: 50, broetchen: 50, croissant: 70, brezel: 100, kuchen: 100, torte: 100, simit: 90, brot: 100,
+  reis: 180, nudeln: 180, pasta: 180, kartoffeln: 220, pommes: 180, soße: 50, sosse: 50, sauce: 50, hollandaise: 60, rahmsoße: 60, dip: 80, cacik: 80, haydari: 80, hummus: 80, lahmacun: 175, doener: 300, döner: 300, durüm: 300, dueruem: 300, pide: 250, köfte: 150, kofte: 150, börek: 100, borek: 100, adana: 175, brötchen: 50, broetchen: 50, croissant: 70, brezel: 100, kuchen: 100, torte: 100, simit: 90,
 };
 
 export function applyPortionReference(item) {
@@ -18,9 +18,13 @@ export function applyPortionReference(item) {
   const refDefault = item.is_beer || /getränk|drink/i.test(item.category || "") ? 200 : 100;
   if (item.portion_g !== refDefault) return item;
   const key = String(item.name || "").toLowerCase().trim();
-  const ref = PORTION_REFERENCES[key];
-  if (Number.isFinite(ref) && ref > 0) {
-    return { ...item, portion_g: ref };
+  if (PORTION_REFERENCES[key] != null) {
+    return { ...item, portion_g: PORTION_REFERENCES[key] };
+  }
+  for (const refKey of Object.keys(PORTION_REFERENCES)) {
+    if (key.includes(refKey)) {
+      return { ...item, portion_g: PORTION_REFERENCES[refKey] };
+    }
   }
   return item;
 }
