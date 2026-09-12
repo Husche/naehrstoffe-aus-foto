@@ -132,11 +132,11 @@ export async function fetchNutrients(foodName, category = "") {
   }
 
   const result = extractNutrients(product);
-  // Fallback auf Mistral-Schätzung, wenn OFF keinen Treffer lieferte.
-  // Liefert realistische Schätzungen für Lebensmittel, die nicht auf OFF
-  // hinterlegt sind (z. B. türkische Speisen, hausgemachte Soßen). Schlägt
-  // der Fallback fehl, bleiben die 0-Werte erhalten.
-  if (result.source === "none") {
+  // Fallback auf Mistral-Schätzung, wenn OFF keinen Treffer lieferte oder
+  // der Treffer keine Kern-Makros enthält (z. B. unvollständige OFF-Einträge
+  // für türkische Speisen). Schlägt der Fallback fehl, bleiben die 0-Werte.
+  const coreEmpty = !(result.kcal || result.protein_g || result.fat_g || result.carbs_g);
+  if (result.source === "none" || coreEmpty) {
     const est = await estimateNutrients(foodName, category).catch(() => null);
     if (est) {
       for (const col of NUTRIENT_COLUMNS) {

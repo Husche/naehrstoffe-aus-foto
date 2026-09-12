@@ -14,7 +14,6 @@ const CATEGORY_RANGES = {
   Sauce: [5, 200],
   Soße: [5, 200],
   Dip: [10, 150],
-  Brot: [10, 300],
   Brötchen: [20, 100],
   Gebäck: [20, 150],
   Suppe: [50, 800],
