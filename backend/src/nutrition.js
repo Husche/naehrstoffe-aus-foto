@@ -1,4 +1,5 @@
 import { config } from "./config.js";
+import { estimateNutrients } from "./mistral.js";
 
 // Nährstoffe, die wir aus Open Food Facts extrahieren (pro 100 g / 100 ml).
 // Schlüssel = OFF-Feldname, Wert = interner Spaltenname im CSV.
@@ -131,10 +132,23 @@ export async function fetchNutrients(foodName) {
   }
 
   const result = extractNutrients(product);
+  // Fallback auf Mistral-Schätzung, wenn OFF keinen Treffer lieferte.
+  // Liefert realistische Schätzungen für Lebensmittel, die nicht auf OFF
+  // hinterlegt sind (z. B. türkische Speisen, hausgemachte Soßen). Schlägt
+  // der Fallback fehl, bleiben die 0-Werte erhalten.
+  if (result.source === "none") {
+    const est = await estimateNutrients(foodName, "").catch(() => null);
+    if (est) {
+      for (const col of NUTRIENT_COLUMNS) {
+        if (est[col] != null) result[col] = Number(est[col]) || 0;
+      }
+      result.source = "mistral-estimate";
+    }
+  }
   // Nur erfolgreiche Treffer cachen. Fehler (z. B. 503/Netzwerk) nicht
   // festhalten, sonst liefert jeder weitere Versuch denselben leeren Treffer
   // bis zum Prozessneustart.
-  if (success) cacheSet(key, result);
+  if (success || result.source === "mistral-estimate") cacheSet(key, result);
   return result;
 }
 
