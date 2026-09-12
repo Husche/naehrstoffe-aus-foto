@@ -14,7 +14,7 @@ const CATEGORY_RANGES = {
   Sauce: [5, 200],
   Suppe: [50, 800],
   Dessert: [20, 400],
-  Getränk: [50, 1000],
+  Getränk: [20, 1000],
   Bier: [100, 1000],
   Sonstiges: [5, 800],
 };

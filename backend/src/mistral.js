@@ -1,9 +1,16 @@
 import { config } from "./config.js";
 
 const FOOD_PROMPT = `Identifiziere alle Lebensmittel und Getränke auf diesem Teller/in diesem Glas.
-Für feste Lebensmittel: Name (auf Deutsch), geschätzte Portionsgröße in Gramm (Tellerreferenz ~25 cm Durchmesser) und eine grobe Kategorie (z. B. Getreide, Gemüse, Fleisch, Obst, Milchprodukt).
+Für feste Lebensmittel: Name (auf Deutsch), geschätzte Portionsgröße in Gramm und eine grobe Kategorie (z. B. Getreide, Gemüse, Fleisch, Obst, Milchprodukt).
 Für Getränke (Wasser, Wein, Saft, Bier, Tee, Kaffee, Limonade, etc.): Name (auf Deutsch), geschätzte Menge in Millilitern als "portion_ml" und Kategorie "Getränk".
 Benenne Getränke nach der erkennbaren Flüssigkeit, nicht nach dem Gefäß – z. B. "Wasser", "Rotwein", "Weißwein", "Orangensaft", "Bier", "Tee", "Kaffee". Verwende nicht "Getränk" als Name.
+
+Schätze die Portionsgröße anhand erkennbarer Gefäß-/Tellergrößen und typischer Serviermengen. Nutze diese Referenzen:
+- Standardteller: ~25 cm Durchmesser. Beilagen (Reis, Nudeln, Kartoffeln) ~150–200 g, Gemüse ~120–200 g, Fleisch/Fisch ~120–180 g, Soße ~30–60 g.
+- Beilagen in Restaurants: Reis/Nudeln meist 150–200 g, Pommes ~150–200 g, Kartoffeln ~200–250 g, Gemüsebeilage ~100–150 g, Salatbeilage ~80–120 g.
+- Getränke nach Glas-/Tassengröße: türkisches Teeglas ~120 ml, Kölschglas/Stange 200 ml, Bierseidel 300 ml, Weizenbierglas 500 ml, Wasserglas 200–250 ml, Rotweinglas 150–200 ml, Weißweinglas 150–200 ml, Sektflöte 100–125 ml, Espresso-Tasse 25–30 ml, Kaffee-/Teetasse 150–200 ml, Cappuccino 150–200 ml, Latte-macchiato-Glas 200–250 ml, Limonadenflasche 330–500 ml, Wasserflasche 500–750 ml.
+- Vermeide pauschal 200 g/ml. Leite die Menge aus dem erkennbaren Gefäß oder der sichtbaren Menge auf dem Teller ab.
+
 Antworte AUSSCHLIESSLICH als JSON-Objekt im folgenden Format, kein Markdown, keine Erklärungen:
 {"items":[{"name":"Reis","portion_g":180,"category":"Getreide"},{"name":"Wasser","portion_ml":200,"category":"Getränk"}]}`;
 
