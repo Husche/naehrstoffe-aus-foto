@@ -1,21 +1,33 @@
 import { config } from "./config.js";
 
 export const FOOD_PROMPT = `Identifiziere alle Lebensmittel und Getränke auf diesem Teller/in diesem Glas.
-Für feste Lebensmittel: Name (auf Deutsch), geschätzte Portionsgröße in Gramm und eine grobe Kategorie (z. B. Getreide, Gemüse, Fleisch, Obst, Milchprodukt, Soße, Backware, Gebäck).
+Nutze sichtbare Farbe, Form, Oberfläche und Textur zur Erkennung. Achte besonders auf Unterschiede ähnlicher Lebensmittel (z. B. Avocado vs. Wassermelone, Mandeln vs. Datteln).
+Für feste Lebensmittel: Name (auf Deutsch), eine grobe Kategorie (z. B. Getreide, Gemüse, Fleisch, Obst, Milchprodukt, Soße, Backware, Gebäck) und eine geschätzte Portionsgröße in Gramm anhand der sichtbaren Menge.
 Für Getränke (Wasser, Wein, Saft, Bier, Tee, Kaffee, Limonade, etc.): Name (auf Deutsch), geschätzte Menge in Millilitern als "portion_ml" und Kategorie "Getränk".
 Benenne Getränke nach der erkennbaren Flüssigkeit, nicht nach dem Gefäß – z. B. "Wasser", "Rotwein", "Weißwein", "Orangensaft", "Bier", "Tee", "Kaffee". Verwende nicht "Getränk" als Name.
-
-Schätze die Portionsgröße anhand erkennbarer Gefäß-/Tellergrößen und typischer Serviermengen. Nutze diese Referenzen:
-- Standardteller: ~25 cm Durchmesser. Beilagen (Reis, Nudeln, Kartoffeln) ~150–200 g, Gemüse ~120–200 g, Fleisch/Fisch ~120–180 g, Soße ~30–60 g.
-- Beilagen in Restaurants: Reis/Nudeln meist 150–200 g, Pommes ~150–200 g, Kartoffeln ~200–250 g, Gemüsebeilage ~100–150 g, Salatbeilage ~80–120 g.
-- Soßen: dünne Soßen (Bratensoße, Jus, Tomatensoße) ~30–60 g, cremige Soßen (Rahmsoße, Hollandaise, Sauce béarnaise) ~40–80 g, Soßen/Dips in türkischer Küche (Cacık, Haydari) ~50–100 g, Meze-Dips (Hummus, Baba Ghanoush) ~50–100 g.
-- Türkische Speisen: Lahmacun ~150–200 g, Dönerbox/Dürüm ~250–350 g, Pide ~200–300 g, Köfte ~120–180 g (3–4 Stück), Börek ~80–120 g, Mezeteller ~150–300 g, Adana ~150–200 g.
-- Backwaren: Brötchen ~40–60 g, Croissant ~60–80 g, Brezel ~80–120 g, Laugengebäck-Stück ~50–80 g, Kuchenstück ~80–120 g, Tortenstück ~80–120 g, Simit ~80–100 g.
-- Getränke nach Glas-/Tassengröße: türkisches Teeglas ~120 ml, Kölschglas/Stange 200 ml, Bierseidel 300 ml, Weizenbierglas 500 ml, Wasserglas 200–250 ml, Rotweinglas 150–200 ml, Weißweinglas 150–200 ml, Sektflöte 100–125 ml, Espresso-Tasse 25–30 ml, Kaffee-/Teetasse 150–200 ml, Cappuccino 150–200 ml, Latte-macchiato-Glas 200–250 ml, Limonadenflasche 330–500 ml, Wasserflasche 500–750 ml.
-- Vermeide pauschal 200 g/ml. Leite die Menge aus dem erkennbaren Gefäß oder der sichtbaren Menge auf dem Teller ab.
-
+Schätze die Portionsgröße anhand erkennbarer Gefäß-/Tellergröße. Vermeide pauschal 200 g/ml.
 Antworte AUSSCHLIESSLICH als JSON-Objekt im folgenden Format, kein Markdown, keine Erklärungen:
 {"items":[{"name":"Reis","portion_g":180,"category":"Getreide"},{"name":"Wasser","portion_ml":200,"category":"Getränk"}]}`;
+
+export const PORTION_REFERENCES = {
+  reis: 180, nudeln: 180, pasta: 180, kartoffeln: 220, pommes: 180, soße: 50, sosse: 50, sauce: 50, hollandaise: 60, rahmsoße: 60, dip: 80, cacik: 80, haydari: 80, hummus: 80, lahmacun: 175, doener: 300, döner: 300, durüm: 300, dueruem: 300, pide: 250, köfte: 150, kofte: 150, börek: 100, borek: 100, adana: 175, brötchen: 50, broetchen: 50, croissant: 70, brezel: 100, kuchen: 100, torte: 100, simit: 90,
+};
+
+export function applyPortionReference(item) {
+  if (!item || !Number.isFinite(item.portion_g) || item.portion_g <= 0) return item;
+  const refDefault = item.is_beer || /getränk|drink/i.test(item.category || "") ? 200 : 100;
+  if (item.portion_g !== refDefault) return item;
+  const key = String(item.name || "").toLowerCase().trim();
+  if (PORTION_REFERENCES[key] != null) {
+    return { ...item, portion_g: PORTION_REFERENCES[key] };
+  }
+  for (const refKey of Object.keys(PORTION_REFERENCES)) {
+    if (key.includes(refKey)) {
+      return { ...item, portion_g: PORTION_REFERENCES[refKey] };
+    }
+  }
+  return item;
+}
 
 export const NUTRIENT_PROMPT = `Schätze die durchschnittlichen Nährwerte pro 100 g (bzw. 100 ml bei Getränken) für das angegebene Lebensmittel. Nenne Werte für Erwachsene, gerundet auf realistische Werte. Antworte AUSSCHLIESSLICH als JSON-Objekt mit exakt diesen Schlüsseln, kein Markdown:
 {"kcal":0,"protein_g":0,"fat_g":0,"sat_fat_g":0,"trans_fat_g":0,"carbs_g":0,"sugar_g":0,"fiber_g":0,"salt_g":0,"sodium_mg":0,"potassium_mg":0,"calcium_mg":0,"magnesium_mg":0,"iron_mg":0,"zinc_mg":0,"phosphorus_mg":0,"vitamin_a_mg":0,"vitamin_c_mg":0,"vitamin_d_ug":0,"vitamin_e_mg":0,"vitamin_b1_mg":0,"vitamin_b2_mg":0,"vitamin_b6_mg":0,"vitamin_b12_ug":0,"niacin_mg":0,"vitamin_k_ug":0,"folate_ug":0,"cholesterol_mg":0}`;
@@ -29,7 +41,7 @@ export async function detectFood(imageBase64, mimeType = "image/jpeg") {
 
   const body = {
     model: config.mistral.model,
-    temperature: 0.2,
+    temperature: 0.3,
     messages: [
       {
         role: "user",
@@ -81,7 +93,7 @@ export async function detectFood(imageBase64, mimeType = "image/jpeg") {
   const items = Array.isArray(parsed)
     ? parsed
     : parsed.items || parsed.foods || parsed.results || [];
-  return items.map(normalizeItem).filter(Boolean);
+  return items.map(normalizeItem).filter(Boolean).map(applyPortionReference);
 }
 
 const BEER_RE = /bier\b|\bbeer\b|\bpils\b|weizenbier\b|altbier\b|\bkölsch\b|rauchbier\b/i;
