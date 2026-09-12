@@ -133,16 +133,35 @@ jobs:
           assert(typeof mistral.estimateNutrients === "function", "estimateNutrients exportiert");
           const estNoKey = await mistral.estimateNutrients("Lahmacun", "Fleisch");
           assert(estNoKey === null, "estimateNutrients ohne API-Key -> null");
-          // FOOD_PROMPT Referenzen für Saucen/türk. Speisen/Backwaren präsent
-          assert(mistral.FOOD_PROMPT.includes("Soße ~30"), "FOOD_PROMPT Soßen-Referenz vorhanden");
-          assert(mistral.FOOD_PROMPT.toLowerCase().includes("türkische speisen"), "FOOD_PROMPT türkische-Referenz vorhanden");
-          assert(mistral.FOOD_PROMPT.includes("Backwaren"), "FOOD_PROMPT Backwaren-Referenz vorhanden");
-          assert(mistral.FOOD_PROMPT.includes("Hollandaise"), "FOOD_PROMPT cremige Soßen-Referenz vorhanden");
-          assert(mistral.FOOD_PROMPT.includes("Lahmacun"), "FOOD_PROMPT Lahmacun-Referenz vorhanden");
-          assert(mistral.FOOD_PROMPT.includes("Brötchen"), "FOOD_PROMPT Brötchen-Referenz vorhanden");
           assert(typeof mistral.NUTRIENT_PROMPT === "string", "NUTRIENT_PROMPT vorhanden");
           assert(mistral.NUTRIENT_PROMPT.includes("kcal"), "NUTRIENT_PROMPT enthält kcal");
           assert(mistral.NUTRIENT_PROMPT.includes("protein_g"), "NUTRIENT_PROMPT enthält protein_g");
+          // FOOD_PROMPT ist jetzt kurz (Erkennung), keine Portionsreferenzen mehr drin
+          assert(!mistral.FOOD_PROMPT.includes("Lahmacun"), "FOOD_PROMPT enthält keine Portionsreferenzen mehr (Lahmacun)");
+          assert(!mistral.FOOD_PROMPT.includes("Brötchen ~"), "FOOD_PROMPT enthält keine Portionsreferenzen mehr (Brötchen)");
+          assert(mistral.FOOD_PROMPT.includes("Farbe"), "FOOD_PROMPT enthält Erkennungs-Anweisung (Farbe)");
+          // PORTION_REFERENCES-Tabelle + applyPortionReference
+          assert(typeof mistral.PORTION_REFERENCES === "object", "PORTION_REFERENCES exportiert");
+          assert(typeof mistral.applyPortionReference === "function", "applyPortionReference exportiert");
+          // Referenzen für Saucen/türk. Speisen/Backwaren vorhanden
+          assert(mistral.PORTION_REFERENCES["lahmacun"] === 175, "Ref: Lahmacun 175g");
+          assert(mistral.PORTION_REFERENCES["brötchen"] === 50, "Ref: Brötchen 50g");
+          assert(mistral.PORTION_REFERENCES["hollandaise"] === 60, "Ref: Hollandaise 60g");
+          assert(mistral.PORTION_REFERENCES["cacik"] === 80, "Ref: Cacık 80g");
+          // applyPortionReference: Default-Wert wird durch Ref ersetzt
+          const ref = mistral.applyPortionReference;
+          assert(ref({ name: "Brötchen", portion_g: 100, category: "Backware", is_beer: false }).portion_g === 50, "Ref: Brötchen Default 100 -> 50g");
+          assert(ref({ name: "Lahmacun", portion_g: 100, category: "Fleisch", is_beer: false }).portion_g === 175, "Ref: Lahmacun Default 100 -> 175g");
+          // Mistral-geschätzte Werte werden NICHT überschrieben (nur Default)
+          assert(ref({ name: "Brötchen", portion_g: 70, category: "Backware", is_beer: false }).portion_g === 70, "Ref: Brötchen 70g Mistral-Schätzung bleibt");
+          assert(ref({ name: "Reis", portion_g: 180, category: "Getreide", is_beer: false }).portion_g === 180, "Ref: Reis 180g Mistral-Schätzung bleibt");
+          // Getränk-Default 200 wird nicht durch feste-Ref überschrieben
+          assert(ref({ name: "Wasser", portion_g: 200, category: "Getränk", is_beer: false }).portion_g === 200, "Ref: Wasser-Default 200 bleibt (Getränk)");
+          // unbekannter Name -> keine Änderung
+          assert(ref({ name: "Unbekannt", portion_g: 100, category: "Sonstiges", is_beer: false }).portion_g === 100, "Ref: unbekannter Name -> keine Änderung");
+          // ungültiges Item -> durchgereicht
+          assert(ref(null) === null, "Ref: null -> null");
+          assert(ref({ name: "X", portion_g: 0, category: "X", is_beer: false }).portion_g === 0, "Ref: portion 0 -> 0 (kein Eingriff)");
 
           // Server-Store (CRUD)
           const fs = await import("node:fs"); const os = await import("node:os"); const p = await import("node:path");
