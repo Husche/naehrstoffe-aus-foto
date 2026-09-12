@@ -6,6 +6,7 @@ import {
   MICRO_KEYS,
   emptyFoodItem,
   rescaleItem,
+  isBeverageItem,
 } from "./types.ts";
 import {
   analyzePhoto,
@@ -71,6 +72,20 @@ function isSameDay(a: string, b: Date) {
     d.getMonth() === b.getMonth() &&
     d.getDate() === b.getDate()
   );
+}
+
+// ISO-Timestamp in yyyy-mm-dd fuer <input type="date"> (lokale Zeit).
+function toDateInput(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// ISO-Timestamp in hh:mm fuer <input type="time"> (lokale Zeit).
+function toTimeInput(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export default function App() {
@@ -243,6 +258,10 @@ export default function App() {
     setDraft({ ...draft, items });
     // Nährwerte für den eingegebenen Namen nachschlagen (debounced).
     scheduleLookup(idx, name, items[idx].portion_g || 100);
+  }
+
+  function setTimestamp(iso: string) {
+    setDraft((d) => (d ? { ...d, timestamp: iso } : d));
   }
 
   // Alle noch laufenden Lookup-Timer abbrechen (beim Speichern/Verwerfen),
@@ -582,6 +601,7 @@ export default function App() {
             setBeer={(b: boolean) => draft && setDraft({ ...draft, beer_flag: b })}
             saveMealLocal={saveMealLocal}
             onDiscard={() => { clearLookupTimers(); setDraft(null); setPreview(null); setError(null); }}
+            setTimestamp={setTimestamp}
           />
         )}
 
@@ -665,6 +685,7 @@ function CaptureView({
   setBeer,
   saveMealLocal,
   onDiscard,
+  setTimestamp,
 }: {
   loading: boolean;
   preview: string | null;
@@ -678,6 +699,7 @@ function CaptureView({
   setBeer: (b: boolean) => void;
   saveMealLocal: () => void;
   onDiscard: () => void;
+  setTimestamp: (iso: string) => void;
 }) {
   return (
     <div>
@@ -722,6 +744,12 @@ function CaptureView({
       {draft && (
         <div className="card">
           {preview && <img src={preview} className="preview" alt="Vorschau" />}
+          {!preview && (
+            <div className="datetime-row">
+              <label>Datum<input type="date" value={toDateInput(draft.timestamp)} onChange={(e) => setTimestamp(new Date(`${e.target.value}T${toTimeInput(draft.timestamp)}`).toISOString())} /></label>
+              <label>Uhrzeit<input type="time" value={toTimeInput(draft.timestamp)} onChange={(e) => setTimestamp(new Date(`${toDateInput(draft.timestamp)}T${e.target.value}`).toISOString())} /></label>
+            </div>
+          )}
           <h3>Erkannte Lebensmittel</h3>
           {draft.sanity_issues?.length > 0 && (
             <div className="sanity">
@@ -750,7 +778,7 @@ function CaptureView({
                     value={it.portion_g}
                     onChange={(e) => updatePortion(i, Number(e.target.value) || 0)}
                   />
-                  <span>g</span>
+                  <span>{isBeverageItem(it) ? "ml" : "g"}</span>
                 </div>
                 <button className="danger btn-remove-item" aria-label="Lebensmittel entfernen" onClick={() => removeItem(i)}><span aria-hidden="true">✕</span></button>
               </div>

@@ -186,6 +186,17 @@ export const NUTRIENT_NUMERIC_KEYS = [
   "trans_fat_g",
 ] as const;
 
+export function isBeverageItem(item: FoodItem): boolean {
+  const name = String(item?.name || "");
+  const category = String(item?.category || "");
+  if (/getränk|drink/i.test(category)) return true;
+  // Bier (auch Komposita wie Dunkelbier) gilt als Getränk.
+  if (/bier\b|\bbeer\b|\bpils\b|weizenbier\b|altbier\b|\bkölsch\b|rauchbier\b/i.test(name) &&
+      !/brot|bröt|semmel|kuchen|suppe|soße|sauce|salat|mus|brei|hefe|käse|marinade|braten|glas|fladen/i.test(name)) return true;
+  return /wasser|wein|saft\b|tee|kaffee|limonade|cola|brause|most|sekt|schorle|cider|schnaps|likör|spirituose/i.test(name) &&
+    !/brot|bröt|semmel|kuchen|suppe|soße|sauce|salat|mus|brei|hefe|käse|marinade|braten|glas|fladen/i.test(name);
+}
+
 export function rescaleItem(item: FoodItem): FoodItem {
   const p = item.per100;
   if (!p || Object.keys(p).length === 0) return item;
