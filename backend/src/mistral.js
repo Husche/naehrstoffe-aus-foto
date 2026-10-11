@@ -1,13 +1,24 @@
 import { config } from "./config.js";
 
 export const FOOD_PROMPT = `Identifiziere alle Lebensmittel und Getränke auf diesem Teller/in diesem Glas.
-Nutze sichtbare Farbe, Form, Oberfläche und Textur zur Erkennung. Achte besonders auf Unterschiede ähnlicher Lebensmittel (z. B. Avocado vs. Wassermelone, Mandeln vs. Datteln).
+Nutze sichtbare Farbe, Form, Oberfläche und Textur zur Erkennung. Achte besonders auf Unterschiede ähnlicher Lebensmittel (z. B. Avocado vs. Wassermelone, Mandeln vs. Datteln). Beschreibe zubereitete Speisen so konkret wie möglich (z. B. "Kartoffelgratin" statt "Auflauf", "gegrillte Hähnchenbrust" statt "Fleisch").
 Für feste Lebensmittel: Name (auf Deutsch), eine grobe Kategorie (z. B. Getreide, Gemüse, Fleisch, Obst, Milchprodukt, Soße, Backware, Gebäck) und eine geschätzte Portionsgröße in Gramm anhand der sichtbaren Menge.
 Für Getränke (Wasser, Wein, Saft, Bier, Tee, Kaffee, Limonade, etc.): Name (auf Deutsch), geschätzte Menge in Millilitern als "portion_ml" und Kategorie "Getränk".
 Benenne Getränke nach der erkennbaren Flüssigkeit, nicht nach dem Gefäß – z. B. "Wasser", "Rotwein", "Weißwein", "Orangensaft", "Bier", "Tee", "Kaffee". Verwende nicht "Getränk" als Name.
-Schätze die Portionsgröße anhand erkennbarer Gefäß-/Tellergröße. Vermeide pauschal 200 g/ml.
+
+Referenzen für die Portionsgrößenschätzung:
+- Standard-Tellteller: ca. 32 cm Durchmesser; Beilage-/Frühstücksteller: ca. 20 cm.
+- Normalgroßes Besteck (Messer ca. 20 cm lang, Gabel ca. 20 cm) als Größenvergleich.
+- Kaffeetasse: ca. 150 ml; Wasserglas: ca. 200 ml; Weinglas gefüllt: ca. 125-200 ml; Bierglas/Pint: ca. 330-500 ml.
+- Eine Handfläche entspricht ca. 100-120 g Fleisch/Fisch; eine Kelle Reis/Nudeln ca. 150-200 g gekocht.
+Schätze die Portionsgröße anhand dieser Referenzen und der sichtbaren Menge. Vermeide pauschal 200 g/ml.
+
+Gib zusätzlich für jedes Item an:
+- "search_name": eine normalisierte englische Bezeichnung des Lebensmittels für eine Lebensmitteldatenbank-Suche (z. B. "Reis" -> "cooked white rice", "Kartoffelgratin" -> "potato gratin", "gegrillte Hähnchenbrust" -> "grilled chicken breast"). Für deutsche/markenübliche Speisen (z. B. Döner, Brezel) die internationale Bezeichnung (z. B. "turkish kebab", "pretzel").
+- "confidence": Zahl zwischen 0 und 1, wie sicher du dir bei der Identifikation bist (1 = sicher, 0 = reine Vermutung).
+
 Antworte AUSSCHLIESSLICH als JSON-Objekt im folgenden Format, kein Markdown, keine Erklärungen:
-{"items":[{"name":"Reis","portion_g":180,"category":"Getreide"},{"name":"Wasser","portion_ml":200,"category":"Getränk"}]}`;
+{"items":[{"name":"Reis","portion_g":180,"category":"Getreide","search_name":"cooked white rice","confidence":0.9},{"name":"Wasser","portion_ml":200,"category":"Getränk","search_name":"water","confidence":1.0}]}`;
 
 export const PORTION_REFERENCES = {
   reis: 180, nudeln: 180, pasta: 180, kartoffeln: 220, pommes: 180, soße: 50, sosse: 50, sauce: 50, hollandaise: 60, rahmsoße: 60, dip: 80, cacik: 80, haydari: 80, hummus: 80, lahmacun: 175, doener: 300, döner: 300, durüm: 300, dueruem: 300, pide: 250, köfte: 150, kofte: 150, börek: 100, borek: 100, adana: 175, brötchen: 50, broetchen: 50, croissant: 70, brezel: 100, kuchen: 100, torte: 100, simit: 90,
@@ -93,7 +104,12 @@ export async function detectFood(imageBase64, mimeType = "image/jpeg") {
   const items = Array.isArray(parsed)
     ? parsed
     : parsed.items || parsed.foods || parsed.results || [];
-  return items.map(normalizeItem).filter(Boolean).map(applyPortionReference);
+  const normalized = items.map(normalizeItem).filter(Boolean).map(applyPortionReference);
+  console.log(
+    `Mistral-Erkennung: ${normalized.length} Items: ` +
+      normalized.map((i) => `${i.name} (${i.portion_g}${i.category.toLowerCase().includes("getränk") ? " ml" : " g"}, conf=${i.confidence ?? "n/a"})`).join("; ")
+  );
+  return normalized;
 }
 
 const BEER_RE = /bier\b|\bbeer\b|\bpils\b|weizenbier\b|altbier\b|\bkölsch\b|rauchbier\b/i;
@@ -114,11 +130,15 @@ export function normalizeItem(raw) {
     (BEVERAGE_NAME_RE.test(name) && !BEVERAGE_FOOD_RE.test(name));
   let portion = portionG > 0 ? portionG : portionMl > 0 ? portionMl : 0;
   if (!(portion > 0)) portion = isBeverage ? 200 : 100;
+  const searchName = String(raw.search_name || raw.search || "").trim();
+  const confidence = Number(raw.confidence);
   return {
     name,
     portion_g: Number.isFinite(portion) && portion > 0 ? portion : 100,
     category,
     is_beer,
+    search_name: searchName || undefined,
+    confidence: Number.isFinite(confidence) && confidence >= 0 && confidence <= 1 ? confidence : undefined,
   };
 }
 
