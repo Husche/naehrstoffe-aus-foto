@@ -60,8 +60,14 @@ app.post("/api/analyze", upload.single("photo"), async (req, res) => {
 
     const detected = await detectFood(base64, mime);
 
-    // Nährstoffe parallel für alle Lebensmittel abfragen.
-    const per100s = await fetchNutrientsBatch(detected.map((d) => d.name), detected.map((d) => d.category));
+    // Nährstoffe parallel für alle Lebensmittel abfragen. search_name ist der
+    // vom Modell gelieferte normalisierte englische Suchbegriff, der die
+    // OFF-Trefferqualität deutlich verbessert (OFF ist überwiegend englisch).
+    const per100s = await fetchNutrientsBatch(
+      detected.map((d) => d.name),
+      detected.map((d) => d.category),
+      detected.map((d) => d.search_name || "")
+    );
     const items = detected.map((d, i) => {
       const per100 = per100s[i];
       const scaled = scaleNutrients(per100, d.portion_g);
@@ -70,6 +76,7 @@ app.post("/api/analyze", upload.single("photo"), async (req, res) => {
         category: d.category,
         portion_g: d.portion_g,
         is_beer: d.is_beer,
+        confidence: d.confidence,
         source: per100.source,
         per100,
         ...scaled,
