@@ -13,7 +13,7 @@ Diese Anleitung beschreibt die komplette Einrichtung der Anwendung von Grund auf
 ### Accounts & API-Keys
 1. **Mistral API Key**
    - Konto auf https://console.mistral.ai
-   - API-Key erstellen (Modell `mistral-large-latest` mit Vision-Unterstützung)
+   - API-Key erstellen (Modell `mistral-large-4` mit Vision-Unterstützung)
 2. **Google Cloud OAuth (für Drive-Upload, optional)**
    - Google Cloud Console → APIs & Services → Credentials
    - OAuth-Client-ID (Web-Anwendung) erstellen
@@ -76,7 +76,7 @@ Die App läuft auf `http://<server-ip>:8787`.
 
 ```env
 MISTRAL_API_KEY=dein-mistral-key
-MISTRAL_MODEL=mistral-large-latest
+MISTRAL_MODEL=mistral-large-4
 GOOGLE_CLIENT_ID=deine-client-id
 GOOGLE_CLIENT_SECRET=dein-secret
 GOOGLE_REDIRECT_URI=https://naehrstoff.deine-domain.de/oauth/google/callback

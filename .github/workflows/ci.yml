@@ -129,6 +129,11 @@ jobs:
           assert(norm({ name: "X", portion_ml: "abc" }).portion_g === 100, "invalid ml -> Fallback");
           assert(norm({ name: "X", portion_g: -50 }).portion_g === 100, "negative portion -> Fallback");
 
+          // Config-Default: Mistral Large 4 ("Le Chonk") als Vision-Modell
+          const { config: cfg } = await import("./src/config.js");
+          assert(cfg.mistral.model === "mistral-large-4", "config: Default-Modell = mistral-large-4");
+          assert(cfg.mistral.endpoint === "https://api.mistral.ai/v1/chat/completions", "config: Mistral-Endpunkt korrekt");
+
           // estimateNutrients-Export und No-Api-Key-Pfad (CI hat keinen Key -> null)
           assert(typeof mistral.estimateNutrients === "function", "estimateNutrients exportiert");
           const estNoKey = await mistral.estimateNutrients("Lahmacun", "Fleisch");

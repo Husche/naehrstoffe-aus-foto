@@ -5,16 +5,16 @@ Extrahiert Makronährstoffe, Vitamine und Mineralstoffe aus einem Foto vom Essen
 ## Architektur
 
 ```
-┌───────────────┐    ┌──────────────────┐    ┌──────────────┐    ┌─────────────┐
-│  React/Vite   │ →  │  Express API     │ →  │ Mistral Large │   │ Open Food   │
-│  Frontend     │ ←  │  (Node.js)       │ ←  │  Vision       │   │  Facts API  │
-│  (IndexedDB)  │    │  CSV + Drive     │    └──────────────┘    └─────────────┘
+┌───────────────┐    ┌──────────────────┐    ┌───────────────┐    ┌─────────────┐
+│  React/Vite   │ →  │  Express API     │ →  │Mistral Large 4│   │ Open Food   │
+│  Frontend     │ ←  │  (Node.js)       │ ←  │    Vision     │   │  Facts API  │
+│  (IndexedDB)  │    │  CSV + Drive     │    └───────────────┘    └─────────────┘
 └───────────────┘    └──────────────────┘
 ```
 
 - **Frontend:** React + TypeScript (Vite), mobile-first, deutschsprachig
 - **Backend:** Node.js/Express (ESM)
-- **Bildanalyse:** Mistral Large Vision (Lebensmittelerkennung + Portionsgröße)
+- **Bildanalyse:** Mistral Large 4 Vision (Lebensmittelerkennung + Portionsgröße)
 - **Nährstoffdaten:** Open Food Facts (kostenlos, keine Edamame)
 - **Export:** CSV im Apple-Health-Pipeline-kompatiblen Format
 - **Storage:** Google Drive API (Upload ins "Health Analysis"-Folder)
@@ -24,7 +24,7 @@ Extrahiert Makronährstoffe, Vitamine und Mineralstoffe aus einem Foto vom Essen
 ## Workflow
 
 1. User macht Foto vom Essen (Kamera oder Upload)
-2. Bild wird an Mistral Large Vision gesendet → JSON-Array mit `name`, `portion_g`, `category`
+2. Bild wird an Mistral Large 4 (Vision) gesendet → JSON-Array mit `name`, `portion_g`, `category`
 3. Jedes erkannte Lebensmittel wird bei Open Food Facts abgefragt
 4. Ergebnisse werden aggregiert: kcal, Kohlenhydrate, Protein, Fett, Ballaststoffe + Mikronährstoffe/Mineralien (Magnesium, Kalzium, Vitamin C, …)
 5. **Sanity Check** der Portionsgrößen (heuristische Plausibilitätsprüfung)
@@ -81,7 +81,7 @@ Alle Secrets über `.env` (siehe `.env.example`):
 | Variable | Beschreibung |
 |----------|--------------|
 | `MISTRAL_API_KEY` | Mistral API Key für Vision-Modell |
-| `MISTRAL_MODEL` | Modellname (Default: `mistral-large-latest`) |
+| `MISTRAL_MODEL` | Modellname (Default: `mistral-large-4`) |
 | `GOOGLE_CLIENT_ID` | Google OAuth Client ID |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth Client Secret |
 | `GOOGLE_REDIRECT_URI` | OAuth Callback URL |
