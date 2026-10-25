@@ -9,7 +9,9 @@ export const config = {
   corsOrigin: process.env.CORS_ORIGIN || "",
   mistral: {
     apiKey: process.env.MISTRAL_API_KEY || "",
-    model: process.env.MISTRAL_MODEL || "mistral-large-latest",
+    // Default: Mistral Large 4 ("Le Chonk"), nativ multimodal (Text + Bild),
+    // 1,6B Vision-Encoder. Ueber MISTRAL_MODEL uebersteuerbar.
+    model: process.env.MISTRAL_MODEL || "mistral-large-4",
     endpoint: "https://api.mistral.ai/v1/chat/completions",
   },
   nutrition: {
